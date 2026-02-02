@@ -2274,13 +2274,13 @@
         listen: true,
         max_seconds: 300
       });
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = "Bearer " + token;
       function attempt(retryCount) {
         return fetch(url, {
           method: "POST",
-          headers: {
-            "Authorization": "Bearer " + token,
-            "Content-Type": "application/json"
-          },
+          headers: headers,
+          credentials: "include",
           body: body
         }).then(function (res) {
           if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -2301,24 +2301,35 @@
       if (!songIds || songIds.length === 0) return;
       const total = songIds.length;
       let done = 0;
+      console.log("[BatchCompare] OpenAI listen start", { n: songIds.length, hasToken: !!token });
       setProgress("OpenAI listen: 0/" + total);
       const tasks = songIds.map(function (sid) {
         return function () {
           return fetchOpenAIAnalyzeWithRetry(sid, token).then(
-            function () {
+            function (res) {
               done++;
               setProgress("OpenAI listen: " + done + "/" + total);
+              var okOrError = "ok";
+              console.log("[BatchCompare] OpenAI listen done", sid, okOrError);
             },
-            function () {
+            function (err) {
               done++;
               setProgress("OpenAI listen: " + done + "/" + total);
+              var okOrError = (err && err.message) ? err.message : "error";
+              console.log("[BatchCompare] OpenAI listen done", sid, okOrError);
             }
           );
         };
       });
       runWithConcurrencyLimit(tasks, 2).then(
-        function () { setProgress(""); },
-        function () { setProgress(""); }
+        function () {
+          setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          setTimeout(function () { setProgress(""); }, 3000);
+        },
+        function () {
+          setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          setTimeout(function () { setProgress(""); }, 3000);
+        }
       );
     }
 
