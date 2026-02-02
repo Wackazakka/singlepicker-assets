@@ -2251,6 +2251,77 @@
       return await res.json();
     }
 
+    function runWithConcurrencyLimit(tasks, limit) {
+      if (!tasks || tasks.length === 0) return Promise.resolve();
+      limit = Math.max(1, Math.min(limit, tasks.length));
+      let index = 0;
+      function runNext() {
+        if (index >= tasks.length) return Promise.resolve();
+        const i = index++;
+        const task = tasks[i];
+        return Promise.resolve(task()).then(() => runNext());
+      }
+      const workers = Array.from({ length: limit }, () => runNext());
+      return Promise.all(workers);
+    }
+
+    function fetchOpenAIAnalyzeWithRetry(songId, token, maxRetries) {
+      maxRetries = maxRetries != null ? maxRetries : 3;
+      const url = API_BASE + "/sidecar/openai/analyze";
+      const body = JSON.stringify({
+        song_id: songId,
+        force: true,
+        listen: true,
+        max_seconds: 300
+      });
+      function attempt(retryCount) {
+        return fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: body
+        }).then(function (res) {
+          if (res.status === 502 || res.status === 503 || res.status === 504) {
+            if (retryCount >= maxRetries) return Promise.reject(new Error("HTTP " + res.status));
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+            return new Promise(function (r) { setTimeout(r, delay); }).then(function () {
+              return attempt(retryCount + 1);
+            });
+          }
+          if (!res.ok) return Promise.reject(new Error("HTTP " + res.status));
+          return res.json();
+        });
+      }
+      return attempt(0);
+    }
+
+    function triggerOpenAIListenBackground(songIds, token) {
+      if (!songIds || songIds.length === 0) return;
+      const total = songIds.length;
+      let done = 0;
+      setProgress("OpenAI listen: 0/" + total);
+      const tasks = songIds.map(function (sid) {
+        return function () {
+          return fetchOpenAIAnalyzeWithRetry(sid, token).then(
+            function () {
+              done++;
+              setProgress("OpenAI listen: " + done + "/" + total);
+            },
+            function () {
+              done++;
+              setProgress("OpenAI listen: " + done + "/" + total);
+            }
+          );
+        };
+      });
+      runWithConcurrencyLimit(tasks, 2).then(
+        function () { setProgress(""); },
+        function () { setProgress(""); }
+      );
+    }
+
     function baseTitleFromFilename(name) {
       const s = String(name || "Untitled");
       return s.replace(/\.[^/.]+$/, "").trim() || "Untitled";
@@ -2447,6 +2518,8 @@
         setPresetInUrl(currentPreset);
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
+        var songIds = (lastGoodItems || []).map(function (i) { return i.song_id; }).filter(Boolean);
+        if (songIds.length) triggerOpenAIListenBackground(songIds, token);
       } catch (e) {
         const errMsg = String(e?.message || e || "");
         if (errMsg === "NO_AUTH" || errMsg === "UNAUTHORIZED" || errMsg.includes("401")) {
