@@ -1,0 +1,19 @@
+<!-- Batch Compare Loader (Webflow Embed) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/batch-compare.css">
+<script>
+(function() {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/batch-compare.js";
+      s.defer = true;
+      document.head.appendChild(s);
+    });
+  } else {
+    var s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/batch-compare.js";
+    s.defer = true;
+    document.head.appendChild(s);
+  }
+})();
+</script>
