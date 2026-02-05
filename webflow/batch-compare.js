@@ -2285,6 +2285,21 @@
       }
     }
 
+    function normalizeItem(item) {
+      if (!item || typeof item !== "object") return item;
+      var out = {};
+      for (var key in item) {
+        if (Object.prototype.hasOwnProperty.call(item, key)) out[key] = item[key];
+      }
+      if ("rank_index" in item) out.rank_index = item.rank_index;
+      if ("openai_status" in item) out.openai_status = item.openai_status;
+      if ("openai_teaser" in item) out.openai_teaser = item.openai_teaser;
+      if ("openai_deep_text" in item) out.openai_deep_text = item.openai_deep_text;
+      if ("openai_unlocked" in item) out.openai_unlocked = item.openai_unlocked;
+      if ("deep_unlocked" in item) out.deep_unlocked = item.deep_unlocked;
+      return out;
+    }
+
     async function fetchBatch(batchId) {
       const token = getSupabaseAccessTokenFromLocalStorage();
       if (!token) {
@@ -2324,7 +2339,8 @@
 
       const data = await res.json();
       console.debug("[Batch Compare] Batch fetch success", { itemsCount: data?.items?.length || 0 });
-      return data;
+      var items = (data.items || []).map(normalizeItem);
+      return { items: items, count: items.length, batch_id: data.batch_id || batchId };
     }
 
     async function uploadOne(file) {
