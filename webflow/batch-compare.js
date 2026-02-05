@@ -56,6 +56,7 @@
     let lastGoodPreset = "hit_single";
     let lastGoodItems = [];
     let lastGoodScores = [];
+    let openAiListenTriggered = false;
 
     const PRESET_STORAGE_KEY = "sp_batch_compare_preset";
     const PRESET_ROLE_LABEL = {
@@ -2297,7 +2298,7 @@
       return attempt(0);
     }
 
-    function triggerOpenAIListenBackground(songIds, token) {
+    function triggerOpenAIListenBackground(songIds, token, onDone) {
       if (!songIds || songIds.length === 0) return;
       const total = songIds.length;
       let done = 0;
@@ -2324,13 +2325,20 @@
       runWithConcurrencyLimit(tasks, 2).then(
         function () {
           setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          if (typeof onDone === "function") {
+            try { onDone(); } catch (e) {}
+          }
           setTimeout(function () { setProgress(""); }, 3000);
         },
         function () {
           setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          if (typeof onDone === "function") {
+            try { onDone(); } catch (e) {}
+          }
           setTimeout(function () { setProgress(""); }, 3000);
         }
-      );
+      );      
+
     }
 
     function baseTitleFromFilename(name) {
@@ -2530,7 +2538,14 @@
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
         var songIds = (lastGoodItems || []).map(function (i) { return i.song_id; }).filter(Boolean);
-        if (songIds.length) triggerOpenAIListenBackground(songIds, token);
+        if (!openAiListenTriggered) {
+          openAiListenTriggered = true;
+          if (songIds.length) {
+            triggerOpenAIListenBackground(songIds, token, function () {
+              loadAndRender(currentPreset);
+            });
+          }
+        }
       } catch (e) {
         const errMsg = String(e?.message || e || "");
         if (errMsg === "NO_AUTH" || errMsg === "UNAUTHORIZED" || errMsg.includes("401")) {
