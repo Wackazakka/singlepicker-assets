@@ -2537,7 +2537,7 @@
         setPresetInUrl(currentPreset);
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
-        var songIds = (lastGoodItems || []).map(function (i) { return i.song_id; }).filter(Boolean);
+        var songIds = (lastGoodItems || []).map(function (i) { return i.id; }).filter(Boolean);
         if (!openAiListenTriggered) {
           openAiListenTriggered = true;
           if (songIds.length) {
