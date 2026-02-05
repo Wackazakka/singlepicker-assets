@@ -1119,16 +1119,17 @@
 
     function appendDeepAnalysis(card, item, rankIndex) {
       if (!card || !item) return;
-      var statusRaw = item.openai_status != null ? String(item.openai_status).trim().toLowerCase() : "";
-      var status = statusRaw || getOpenAIStatus(item);
-      var deepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : getOpenAIDeepText(item);
-      var unlocked = !!deepText || isOpenAIUnlocked(item, rankIndex);
+      var status = (String(item.openai_status || "").trim().toLowerCase()) || getOpenAIStatus(item);
+      var unlocked = !!(item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") || isOpenAIUnlocked(item, rankIndex);
+      var deepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : (unlocked ? getOpenAIDeepText(item) : null);
       var modifier = "bc-btn-deep-pending";
       if (status === "finished") {
         modifier = unlocked ? "bc-btn-deep-open" : "bc-btn-deep-locked";
       } else if (status === "error") {
         modifier = "bc-btn-deep-locked";
-      } else if (!status || (status !== "pending" && status !== "finished" && status !== "error")) {
+      } else if (status === "pending" || status === "") {
+        modifier = "bc-btn-deep-pending";
+      } else {
         modifier = "bc-btn-deep-locked";
       }
       const btn = document.createElement("button");
@@ -1139,7 +1140,7 @@
       panel.style.display = "none";
       if (status === "error") {
         panel.appendChild(el("div", "bc-row", "Analysis failed. Try again later."));
-      } else if (status === "pending") {
+      } else if (status === "pending" || status === "") {
         panel.appendChild(el("div", "bc-row", "Analyzing…"));
       } else if (status === "finished" && unlocked && deepText) {
         const pre = document.createElement("pre");
@@ -1151,17 +1152,7 @@
         panel.appendChild(pre);
       } else if (status === "finished" && !unlocked) {
         panel.appendChild(el("div", "bc-row", "Deep Analysis is locked for this track."));
-        var teaserText = null;
-        var anyDeepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : getOpenAIDeepText(item);
-        if (anyDeepText) {
-          teaserText = extractSectionOneTeaser(anyDeepText);
-        }
-        if (!teaserText && item.openai_teaser != null && typeof item.openai_teaser === "string" && item.openai_teaser.trim() !== "") {
-          teaserText = item.openai_teaser.trim();
-        }
-        if (!teaserText) {
-          teaserText = getOpenAITeaser(item);
-        }
+        var teaserText = (item.openai_teaser != null && typeof item.openai_teaser === "string" && item.openai_teaser.trim() !== "") ? item.openai_teaser.trim() : getOpenAITeaser(item);
         if (teaserText) {
           const label = el("div", "bc-row", "Teaser:");
           label.style.marginTop = "8px";
