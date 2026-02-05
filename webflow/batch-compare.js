@@ -2455,6 +2455,7 @@
     }
 
     function triggerOpenAIListenBackground(songIds, token, onDone, isMySongsMode) {
+      return;
       if (isMySongsMode) return;
       if (!songIds || songIds.length === 0) return;
       const total = songIds.length;
@@ -2697,15 +2698,6 @@
         setPresetInUrl(currentPreset);
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
-        var songIds = (lastGoodItems || []).map(function (i) { return i.id; }).filter(Boolean);
-        if (!isMySongsMode && !openAiListenTriggered) {
-          openAiListenTriggered = true;
-          if (songIds.length) {
-            triggerOpenAIListenBackground(songIds, token, function () {
-              loadAndRender(currentPreset);
-            }, isMySongsMode);
-          }
-        }
       } catch (e) {
         const errMsg = String(e?.message || e || "");
         if (errMsg === "NO_AUTH" || errMsg === "UNAUTHORIZED" || errMsg.includes("401")) {
