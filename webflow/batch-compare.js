@@ -769,6 +769,7 @@
     function getOpenAIStatus(item) {
       if (!item || typeof item !== "object") return "pending";
       const raw = item.openai_status
+        || item?.features_json?.sidecar?.openai?.status
         || item?.features_json?.openai?.status
         || item?.features_json?.openai?.sidecar?.status
         || item?.features_json?.openai_sidecar?.status;
@@ -782,18 +783,21 @@
     function getOpenAIDeepText(item) {
       if (!item || typeof item !== "object") return null;
       const t = item.openai_deep_text
+        || item?.features_json?.sidecar?.openai?.deep_text
         || item?.features_json?.openai?.deep_text
         || item?.features_json?.openai?.sidecar?.deep_text
         || item?.features_json?.openai_sidecar?.deep_text;
       if (t !== null && t !== undefined && String(t).trim() !== "") return String(t).trim();
-      const summary = item?.features_json?.openai?.sidecar?.judge?.summary;
+      const summary = item?.features_json?.sidecar?.openai?.judge?.summary
+        || item?.features_json?.openai?.sidecar?.judge?.summary;
       if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
       return null;
     }
 
     function getOpenAITeaser(item) {
       if (!item || typeof item !== "object") return null;
-      const summary = item?.features_json?.openai?.sidecar?.judge?.summary;
+      const summary = item?.features_json?.sidecar?.openai?.judge?.summary
+        || item?.features_json?.openai?.sidecar?.judge?.summary;
       if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
       return null;
     }
