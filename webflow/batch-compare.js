@@ -2351,6 +2351,41 @@
       return { items: items, count: items.length, batch_id: data.batch_id || batchId };
     }
 
+    /** Fetch compare view by song IDs (mysongs mode). Backend should expose GET /batch/by-songs?song_ids=id1,id2,... */
+    async function fetchCompareBySongIds(songIds) {
+      const token = getSupabaseAccessTokenFromLocalStorage();
+      if (!token) {
+        showError("You must be logged in to view this compare.");
+        throw new Error("NO_AUTH");
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT);
+      const param = songIds.join(",");
+      const url = API_BASE + "/batch/by-songs?song_ids=" + encodeURIComponent(param);
+      console.debug("[Batch Compare] Fetching by song IDs", { songIdsLen: songIds.length, url: url });
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.status === 401) {
+        showError("You must be logged in to view this compare.");
+        throw new Error("UNAUTHORIZED");
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(function () { return ""; });
+        console.error("[Batch Compare] By-songs fetch failed", { status: res.status, text: text.substring(0, 200) });
+        throw new Error("HTTP_" + res.status);
+      }
+      const data = await res.json();
+      var items = (data.items || []).map(normalizeItem);
+      return { items: items, count: items.length, batch_id: data.batch_id || null };
+    }
+
     async function uploadOne(file) {
       const fd = new FormData();
       fd.append("file", file, file.name);
@@ -2577,6 +2612,9 @@
     }
 
     async function init() {
+      const INITIAL_HREF = window.location.href;
+      const qs = new URL(INITIAL_HREF).searchParams;
+
       showLoading();
 
       const session = await findSupabaseSessionWithRetry(3, 500);
@@ -2587,12 +2625,39 @@
       const token = session.access_token;
       const debugMode = qsDebug();
 
-      const batchId = qsBatchId();
-      const params = new URLSearchParams(window.location.search);
-      const mode = (params.get("mode") || "").toLowerCase();
-      const isMySongsMode = (mode === "mysongs" || mode === "my-songs" || mode === "library") || (!batchId && !!(params.get("song_ids") || params.get("ids")));
+      const batchId = (qs.get("batch_id") || "").trim() || null;
+      const mode = (qs.get("mode") || "").trim();
+      const songIdsParam = (qs.get("song_ids") || qs.get("songIds") || "").trim();
+      const songIds = songIdsParam.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      console.log("[batch] parsed params", { INITIAL_HREF: INITIAL_HREF, mode: mode, songIdsLen: songIds.length, songIds: songIds });
 
-      if (!batchId) {
+      const isMySongsMode = (mode.toLowerCase() === "mysongs" || mode.toLowerCase() === "my-songs" || mode.toLowerCase() === "library") || (!batchId && songIds.length > 0);
+
+      if (mode.toLowerCase() === "mysongs" || mode.toLowerCase() === "my-songs" || mode.toLowerCase() === "library") {
+        if (!songIds.length) {
+          console.warn("[batch] mysongs mode but no song ids found in URL", { INITIAL_HREF: INITIAL_HREF });
+          showUploader();
+          setMsg("No songs selected. Add song_ids or songIds to the URL.");
+          if (elFiles) {
+            elFiles.addEventListener("change", function () {
+              addFilesFromPicker(elFiles.files);
+              try { elFiles.value = ""; } catch (_) {}
+            });
+          }
+          if (elReset) {
+            elReset.addEventListener("click", function () {
+              resetSelection();
+              setMsg("Select at least 3 files.");
+            });
+          }
+          if (elStart) {
+            elStart.addEventListener("click", function () { handleStartBatch(token); });
+          }
+          return;
+        }
+      }
+
+      if (!batchId && !songIds.length) {
         showUploader();
 
         resetSelection();
@@ -2641,9 +2706,21 @@
       const loadAndRender = async (preset) => {
         const p = preset || "hit_single";
         try {
-          const data = await fetchBatch(batchId);
+          let data;
+          if (batchId) {
+            console.log("[batch] branch=batchId");
+            data = await fetchBatch(batchId);
+          } else if (songIds && songIds.length > 0) {
+            console.log("[batch] branch=mysongs");
+            data = await fetchCompareBySongIds(songIds);
+          } else {
+            console.log("[batch] branch=empty");
+            showError("No batch or songs to load.");
+            return;
+          }
           stopPlayback();
-          await renderCompare(data.items || [], batchId, p);
+          const effectiveBatchId = data.batch_id != null ? data.batch_id : batchId;
+          await renderCompare(data.items || [], effectiveBatchId, p);
           lastGoodItems = (data.items || []).slice();
           lastGoodPreset = p;
         } catch (e) {
