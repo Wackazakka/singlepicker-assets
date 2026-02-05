@@ -766,6 +766,47 @@
       return tags.map(normalizeTagProb).filter(Boolean);
     }
 
+    function getOpenAIStatus(item) {
+      if (!item || typeof item !== "object") return "pending";
+      const raw = item.openai_status
+        || item?.features_json?.openai?.status
+        || item?.features_json?.openai?.sidecar?.status
+        || item?.features_json?.openai_sidecar?.status;
+      if (raw === null || raw === undefined) return "pending";
+      const s = String(raw).toLowerCase();
+      if (s === "finished" || s === "complete" || s === "done" || s === "ok" || s === "success") return "finished";
+      if (s === "error" || s === "failed" || s === "fail") return "error";
+      return "pending";
+    }
+
+    function getOpenAIDeepText(item) {
+      if (!item || typeof item !== "object") return null;
+      const t = item.openai_deep_text
+        || item?.features_json?.openai?.deep_text
+        || item?.features_json?.openai?.sidecar?.deep_text
+        || item?.features_json?.openai_sidecar?.deep_text;
+      if (t !== null && t !== undefined && String(t).trim() !== "") return String(t).trim();
+      const summary = item?.features_json?.openai?.sidecar?.judge?.summary;
+      if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
+      return null;
+    }
+
+    function getOpenAITeaser(item) {
+      if (!item || typeof item !== "object") return null;
+      const summary = item?.features_json?.openai?.sidecar?.judge?.summary;
+      if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
+      return null;
+    }
+
+    function isOpenAIUnlocked(item, rankIndex) {
+      if (!item || typeof item !== "object") return rankIndex === 0;
+      if (item.openai_unlocked === true || item.deep_unlocked === true) return true;
+      const fj = item.features_json;
+      if (fj && typeof fj === "object" && fj.openai && typeof fj.openai === "object" && fj.openai.unlocked === true) return true;
+      if (rankIndex === 0) return true;
+      return false;
+    }
+
     function formatMmSs(totalSeconds) {
       const n = Number(totalSeconds);
       if (!isFinite(n) || n < 0) return "—";
@@ -1056,6 +1097,61 @@
       wrap.appendChild(helperText);
       wrap.appendChild(body);
       card.appendChild(wrap);
+    }
+
+    function appendDeepAnalysis(card, item, rankIndex) {
+      if (!card || !item) return;
+      const status = getOpenAIStatus(item);
+      const unlocked = isOpenAIUnlocked(item, rankIndex);
+      const deepText = getOpenAIDeepText(item);
+      const teaser = getOpenAITeaser(item);
+      let modifier = "bc-btn-deep-pending";
+      if (status === "finished") {
+        modifier = unlocked ? "bc-btn-deep-open" : "bc-btn-deep-locked";
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bc-btn " + modifier;
+      btn.textContent = "Deep Analysis";
+      const panel = el("div", "bc-deep-panel");
+      panel.style.display = "none";
+      if (unlocked && status === "finished") {
+        if (deepText) {
+          const pre = document.createElement("pre");
+          pre.style.whiteSpace = "pre-wrap";
+          pre.style.margin = "0";
+          pre.style.fontSize = "12px";
+          pre.style.color = "#374151";
+          pre.textContent = deepText;
+          panel.appendChild(pre);
+        } else {
+          panel.appendChild(el("div", "bc-row", "No deep analysis text available."));
+        }
+      } else if (status === "finished" && !unlocked) {
+        const p = el("div", "bc-row", "Deep Analysis is locked for this track.");
+        panel.appendChild(p);
+        if (teaser) {
+          const teaserEl = document.createElement("div");
+          teaserEl.style.marginTop = "8px";
+          teaserEl.style.fontSize = "12px";
+          teaserEl.style.color = "#6b7280";
+          teaserEl.textContent = teaser;
+          panel.appendChild(teaserEl);
+        }
+        const unlockPlaceholder = el("div", "bc-row", "Unlock");
+        unlockPlaceholder.style.marginTop = "8px";
+        unlockPlaceholder.style.color = "#9ca3af";
+        panel.appendChild(unlockPlaceholder);
+      } else {
+        const msg = el("div", "bc-row", "Analyzing…");
+        panel.appendChild(msg);
+      }
+      btn.addEventListener("click", function () {
+        const open = panel.style.display !== "none";
+        panel.style.display = open ? "none" : "block";
+      });
+      card.appendChild(btn);
+      card.appendChild(panel);
     }
 
     function appendSegmentInfo(card, item, showDebug) {
@@ -1692,6 +1788,7 @@
               }
 
               appendSpotifyPitch(card, item);
+              appendDeepAnalysis(card, item, idx);
 
               elList.appendChild(card);
             } catch (e) {
@@ -2079,6 +2176,7 @@
           }
 
           appendSpotifyPitch(card, item);
+          appendDeepAnalysis(card, item, idx);
 
           elList.appendChild(card);
         } catch (e) {

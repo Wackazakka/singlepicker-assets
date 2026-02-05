@@ -331,3 +331,26 @@
 .hs-yellowgreen { color: #4CAF50; }
 .hs-green { color: #20c997; }
 .hs-blue { color: #337ab7; }
+
+/* Deep Analysis button and panel */
+.bc-btn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.bc-btn-deep-open { background: #16a34a; color: #fff; }
+.bc-btn-deep-open:hover { opacity: 0.92; }
+.bc-btn-deep-locked { background: #dc2626; color: #fff; }
+.bc-btn-deep-locked:hover { opacity: 0.92; }
+.bc-btn-deep-pending { background: #9ca3af; color: #fff; cursor: not-allowed; }
+.bc-deep-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-size: 12px;
+}
