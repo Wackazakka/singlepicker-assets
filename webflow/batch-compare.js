@@ -1103,10 +1103,23 @@
       card.appendChild(wrap);
     }
 
+    function extractSectionOneTeaser(deepText) {
+      if (!deepText || typeof deepText !== "string") return null;
+      const match = deepText.match(/1\.\s*First impression[\s\S]*?(?=\n\d+\.\s)/i);
+      if (!match) return null;
+      let section = match[0];
+      section = section.replace(/1\.\s*First impression.*?\n/i, "").trim();
+      const sentences = section.match(/[^.!?]+[.!?]+/g);
+      if (sentences && sentences.length > 0) {
+        const firstTwo = sentences.slice(0, 2).join(" ").trim();
+        return firstTwo.length > 260 ? firstTwo.slice(0, 260) + "…" : firstTwo;
+      }
+      return section.length > 260 ? section.slice(0, 260) + "…" : section;
+    }
+
     function appendDeepAnalysis(card, item, rankIndex) {
       if (!card || !item) return;
       var status = (item.openai_status && String(item.openai_status).toLowerCase()) || getOpenAIStatus(item);
-      var teaser = (item.openai_teaser != null && String(item.openai_teaser).trim() !== "") ? String(item.openai_teaser).trim() : getOpenAITeaser(item);
       var deepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : getOpenAIDeepText(item);
       var unlocked = !!deepText || isOpenAIUnlocked(item, rankIndex);
       var modifier = "bc-btn-deep-pending";
@@ -1135,7 +1148,17 @@
         panel.appendChild(pre);
       } else if (status === "finished" && !unlocked) {
         panel.appendChild(el("div", "bc-row", "Deep Analysis is locked for this track."));
-        if (teaser) {
+        var teaserText = null;
+        if (item.openai_deep_text) {
+          teaserText = extractSectionOneTeaser(item.openai_deep_text);
+        }
+        if (!teaserText && item.openai_teaser) {
+          teaserText = (typeof item.openai_teaser === "string" && item.openai_teaser.trim() !== "") ? item.openai_teaser.trim() : null;
+        }
+        if (!teaserText) {
+          teaserText = getOpenAITeaser(item);
+        }
+        if (teaserText) {
           const label = el("div", "bc-row", "Teaser:");
           label.style.marginTop = "8px";
           label.style.fontSize = "11px";
@@ -1145,7 +1168,7 @@
           teaserEl.style.marginTop = "4px";
           teaserEl.style.fontSize = "12px";
           teaserEl.style.color = "#6b7280";
-          teaserEl.textContent = teaser;
+          teaserEl.textContent = teaserText;
           panel.appendChild(teaserEl);
         }
         const unlockPlaceholder = el("div", "bc-row", "Unlock");

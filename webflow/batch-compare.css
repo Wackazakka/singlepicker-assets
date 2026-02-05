@@ -334,18 +334,29 @@
 
 /* Deep Analysis button and panel */
 .bc-btn {
-  border: 1px solid transparent;
   border-radius: 8px;
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
   margin-top: 6px;
+  transition: background 0.15s ease, border 0.15s ease;
 }
-.bc-btn-deep-open { background: #16a34a; color: #fff; }
-.bc-btn-deep-open:hover { opacity: 0.92; }
-.bc-btn-deep-locked { background: #dc2626; color: #fff; }
-.bc-btn-deep-locked:hover { opacity: 0.92; }
-.bc-btn-deep-pending { background: #9ca3af; color: #fff; cursor: not-allowed; }
+.bc-btn-deep-open {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+.bc-btn-deep-locked {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.bc-btn-deep-pending {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  cursor: not-allowed;
+}
 .bc-deep-panel {
   margin-top: 8px;
   padding: 10px 12px;
