@@ -1119,13 +1119,16 @@
 
     function appendDeepAnalysis(card, item, rankIndex) {
       if (!card || !item) return;
-      var status = (item.openai_status && String(item.openai_status).toLowerCase()) || getOpenAIStatus(item);
+      var statusRaw = item.openai_status != null ? String(item.openai_status).trim().toLowerCase() : "";
+      var status = statusRaw || getOpenAIStatus(item);
       var deepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : getOpenAIDeepText(item);
       var unlocked = !!deepText || isOpenAIUnlocked(item, rankIndex);
       var modifier = "bc-btn-deep-pending";
       if (status === "finished") {
         modifier = unlocked ? "bc-btn-deep-open" : "bc-btn-deep-locked";
       } else if (status === "error") {
+        modifier = "bc-btn-deep-locked";
+      } else if (!status || (status !== "pending" && status !== "finished" && status !== "error")) {
         modifier = "bc-btn-deep-locked";
       }
       const btn = document.createElement("button");
@@ -1149,11 +1152,12 @@
       } else if (status === "finished" && !unlocked) {
         panel.appendChild(el("div", "bc-row", "Deep Analysis is locked for this track."));
         var teaserText = null;
-        if (item.openai_deep_text) {
-          teaserText = extractSectionOneTeaser(item.openai_deep_text);
+        var anyDeepText = (item.openai_deep_text != null && String(item.openai_deep_text).trim() !== "") ? String(item.openai_deep_text).trim() : getOpenAIDeepText(item);
+        if (anyDeepText) {
+          teaserText = extractSectionOneTeaser(anyDeepText);
         }
-        if (!teaserText && item.openai_teaser) {
-          teaserText = (typeof item.openai_teaser === "string" && item.openai_teaser.trim() !== "") ? item.openai_teaser.trim() : null;
+        if (!teaserText && item.openai_teaser != null && typeof item.openai_teaser === "string" && item.openai_teaser.trim() !== "") {
+          teaserText = item.openai_teaser.trim();
         }
         if (!teaserText) {
           teaserText = getOpenAITeaser(item);
@@ -1178,7 +1182,11 @@
       } else if (status === "finished") {
         panel.appendChild(el("div", "bc-row", "No deep analysis text available."));
       } else {
-        panel.appendChild(el("div", "bc-row", "Analyzing…"));
+        panel.appendChild(el("div", "bc-row", "No analysis yet."));
+        const unlockPlaceholder = el("div", "bc-row", "Unlock");
+        unlockPlaceholder.style.marginTop = "8px";
+        unlockPlaceholder.style.color = "#9ca3af";
+        panel.appendChild(unlockPlaceholder);
       }
       btn.addEventListener("click", function () {
         const open = panel.style.display !== "none";
@@ -2446,7 +2454,8 @@
       return attempt(0);
     }
 
-    function triggerOpenAIListenBackground(songIds, token, onDone) {
+    function triggerOpenAIListenBackground(songIds, token, onDone, isMySongsMode) {
+      if (isMySongsMode) return;
       if (!songIds || songIds.length === 0) return;
       const total = songIds.length;
       let done = 0;
@@ -2578,6 +2587,9 @@
       const debugMode = qsDebug();
 
       const batchId = qsBatchId();
+      const params = new URLSearchParams(window.location.search);
+      const mode = (params.get("mode") || "").toLowerCase();
+      const isMySongsMode = (mode === "mysongs" || mode === "my-songs" || mode === "library") || (!batchId && !!(params.get("song_ids") || params.get("ids")));
 
       if (!batchId) {
         showUploader();
@@ -2686,12 +2698,12 @@
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
         var songIds = (lastGoodItems || []).map(function (i) { return i.id; }).filter(Boolean);
-        if (!openAiListenTriggered) {
+        if (!isMySongsMode && !openAiListenTriggered) {
           openAiListenTriggered = true;
           if (songIds.length) {
             triggerOpenAIListenBackground(songIds, token, function () {
               loadAndRender(currentPreset);
-            });
+            }, isMySongsMode);
           }
         }
       } catch (e) {
