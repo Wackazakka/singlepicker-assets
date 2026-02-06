@@ -1,5 +1,5 @@
-<!-- Submit page embed: paste into Webflow embed. Replace <USER>, <REPO>, <COMMIT> with your repo and SHA. -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/submit.css">
+<!-- Submit page embed: paste into Webflow embed. SHA = latest after "Submit: token getter + artist toggle + proper batch/tag redirect" -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Wackazakka/singlepicker-assets@b9ddaa83de7bbf82b88ac41cb297bd48dd912fb1/webflow/submit.css">
 <script>
 (function() {
   if (document.readyState === "loading") {
@@ -9,7 +9,7 @@
   }
   function loadSubmit() {
     var s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/submit.js";
+    s.src = "https://cdn.jsdelivr.net/gh/Wackazakka/singlepicker-assets@b9ddaa83de7bbf82b88ac41cb297bd48dd912fb1/webflow/submit.js";
     s.defer = true;
     document.head.appendChild(s);
   }
