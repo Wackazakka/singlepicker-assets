@@ -1,6 +1,6 @@
 (function () {
   "use strict";
-  console.log("SP JS VERSION 2026-02-02-OAI");
+  console.log("SP JS VERSION FIX-DEEP-GREEN");
 
   if (window.__BATCH_COMPARE_V1_LOADED__) return;
   window.__BATCH_COMPARE_V1_LOADED__ = true;
