@@ -1,0 +1,46 @@
+/* Submit page: artist toggle + file list (optional; Webflow may style via classes) */
+.sp-artist-toggle-wrap {
+  display: block;
+  margin-bottom: 8px;
+}
+.sp-artist-toggle-wrap label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sp-same-artist-checkbox {
+  margin: 0;
+}
+.sp-artist-input-wrap {
+  margin-top: 6px;
+}
+.sp-artist-input-wrap input,
+.sp-artist-per-file {
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.sp-artist-per-file {
+  max-width: 160px;
+  margin-left: 8px;
+}
+.sp-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sp-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-file-remove {
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}

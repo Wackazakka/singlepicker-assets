@@ -1,0 +1,17 @@
+<!-- Submit page embed: paste into Webflow embed. Replace <USER>, <REPO>, <COMMIT> with your repo and SHA. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/submit.css">
+<script>
+(function() {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadSubmit);
+  } else {
+    loadSubmit();
+  }
+  function loadSubmit() {
+    var s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/gh/<USER>/<REPO>@<COMMIT>/webflow/submit.js";
+    s.defer = true;
+    document.head.appendChild(s);
+  }
+})();
+</script>
