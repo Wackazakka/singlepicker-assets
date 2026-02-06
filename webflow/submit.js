@@ -68,9 +68,9 @@
 
   function renderFileList() {
     const list = document.getElementById("sp-file-list");
-    const addBtn = document.getElementById("sp-add-btn");
+    const pickBtn = document.getElementById("sp-pick-btn");
     const uploadBtn = document.getElementById("sp-upload-btn");
-    if (addBtn) addBtn.style.display = selectedFiles.length >= 1 ? "block" : "none";
+    if (pickBtn) pickBtn.textContent = selectedFiles.length === 0 ? "Choose files" : "Add more files";
     if (uploadBtn) uploadBtn.disabled = selectedFiles.length < 3 || selectedFiles.length > 10;
     setCountText(selectedFiles.length);
 
@@ -238,11 +238,9 @@
     const uploadBtn = document.getElementById("sp-upload-btn");
     const fileInput = document.getElementById("sp-file-input");
     const pickBtn = document.getElementById("sp-pick-btn");
-    const addBtn = document.getElementById("sp-add-btn");
     if (uploadBtn) uploadBtn.disabled = true;
     if (fileInput) fileInput.disabled = true;
     if (pickBtn) pickBtn.disabled = true;
-    if (addBtn) addBtn.disabled = true;
     setDebug("Uploading…");
 
     try {
@@ -269,7 +267,6 @@
       if (uploadBtn) uploadBtn.disabled = false;
       if (fileInput) fileInput.disabled = false;
       if (pickBtn) pickBtn.disabled = false;
-      if (addBtn) addBtn.disabled = false;
     }
   }
 
@@ -283,17 +280,10 @@
 
     const pickBtn = document.getElementById("sp-pick-btn");
     if (pickBtn) {
+      pickBtn.textContent = "Choose files";
       pickBtn.addEventListener("click", function () {
         if (fileInput) fileInput.click();
       });
-    }
-
-    const addBtn = document.getElementById("sp-add-btn");
-    if (addBtn) {
-      addBtn.addEventListener("click", function () {
-        if (fileInput) fileInput.click();
-      });
-      addBtn.style.display = "none";
     }
 
     const uploadBtn = document.getElementById("sp-upload-btn");

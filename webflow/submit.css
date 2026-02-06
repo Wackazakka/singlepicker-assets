@@ -1,4 +1,9 @@
 /* Submit page: artist toggle + file list (optional; Webflow may style via classes) */
+#sp-artist,
+#sp-batch-label {
+  background: #1f2937 !important;
+  color: #ffffff !important;
+}
 .sp-artist-toggle-wrap {
   display: block;
   margin-bottom: 8px;
