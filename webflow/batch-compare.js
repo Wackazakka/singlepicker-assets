@@ -1119,27 +1119,17 @@
 
     function appendDeepAnalysis(card, item, rankIndex) {
       if (!card || !item) return;
-      const statusRaw = String(item.openai_status || "").trim().toLowerCase();
-      const status = statusRaw || null;
-      const deepText = (item.openai_deep_text && String(item.openai_deep_text).trim()) ? String(item.openai_deep_text).trim() : null;
-      const teaser = (item.openai_teaser && String(item.openai_teaser).trim()) ? String(item.openai_teaser).trim() : null;
-      var modifier = "bc-btn-deep-locked";
-      if (status === "pending") {
-        modifier = "bc-btn-deep-pending";
-      } else if (status === "finished" && deepText) {
-        modifier = "bc-btn-deep-open";
-      } else if (status === "finished" || status === "error") {
-        modifier = "bc-btn-deep-locked";
-      }
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "bc-btn " + modifier;
+      btn.className = "bc-btn";
+      const unlocked = item && item.openai_unlocked === true;
+      btn.classList.add(unlocked ? "bc-btn-deep-open" : "bc-btn-deep-locked");
       btn.textContent = "Deep Analysis";
       const panel = el("div", "bc-deep-panel");
       panel.style.display = "none";
-      if (status === "pending") {
-        panel.appendChild(el("div", "bc-row", "Analyzing…"));
-      } else if (status === "finished" && deepText) {
+      const deepText = (item.openai_deep_text && String(item.openai_deep_text).trim()) ? String(item.openai_deep_text).trim() : "";
+      const teaser = (item.openai_teaser && String(item.openai_teaser).trim()) ? String(item.openai_teaser).trim() : "";
+      if (unlocked && deepText) {
         const pre = document.createElement("pre");
         pre.style.whiteSpace = "pre-wrap";
         pre.style.margin = "0";
@@ -1147,29 +1137,8 @@
         pre.style.color = "#374151";
         pre.textContent = deepText;
         panel.appendChild(pre);
-      } else if (status === "finished" && !deepText) {
-        panel.appendChild(el("div", "bc-row", "Deep Analysis is locked for this track."));
-        if (teaser) {
-          const label = el("div", "bc-row", "Teaser:");
-          label.style.marginTop = "8px";
-          label.style.fontSize = "11px";
-          label.style.color = "#9ca3af";
-          panel.appendChild(label);
-          const teaserEl = document.createElement("div");
-          teaserEl.style.marginTop = "4px";
-          teaserEl.style.fontSize = "12px";
-          teaserEl.style.color = "#6b7280";
-          teaserEl.textContent = teaser;
-          panel.appendChild(teaserEl);
-        }
-        const unlockPlaceholder = el("div", "bc-row", "Unlock");
-        unlockPlaceholder.style.marginTop = "8px";
-        unlockPlaceholder.style.color = "#9ca3af";
-        panel.appendChild(unlockPlaceholder);
-      } else if (status === "error") {
-        panel.appendChild(el("div", "bc-row", "Analysis failed. Try again later."));
       } else {
-        panel.appendChild(el("div", "bc-row", "No analysis yet."));
+        panel.appendChild(el("div", "bc-row", unlocked ? "No deep analysis text yet." : "Deep Analysis is locked for this track."));
         if (teaser) {
           const label = el("div", "bc-row", "Teaser:");
           label.style.marginTop = "8px";
@@ -1183,10 +1152,6 @@
           teaserEl.textContent = teaser;
           panel.appendChild(teaserEl);
         }
-        const unlockPlaceholder = el("div", "bc-row", "Unlock");
-        unlockPlaceholder.style.marginTop = "8px";
-        unlockPlaceholder.style.color = "#9ca3af";
-        panel.appendChild(unlockPlaceholder);
       }
       btn.addEventListener("click", function () {
         const open = panel.style.display !== "none";
