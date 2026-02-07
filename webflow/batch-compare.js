@@ -1137,6 +1137,57 @@
         pre.style.color = "#374151";
         pre.textContent = deepText;
         panel.appendChild(pre);
+
+        if (item.suno_slider_values && typeof item.suno_slider_values === "object") {
+          const sv = item.suno_slider_values;
+          const block = el("div", "bc-suno-policy");
+          block.style.marginTop = "14px";
+          block.style.paddingTop = "10px";
+          block.style.borderTop = "1px solid #e5e7eb";
+          const titleEl = document.createElement("div");
+          titleEl.className = "bc-row";
+          titleEl.style.fontWeight = "bold";
+          titleEl.style.marginBottom = "6px";
+          titleEl.textContent = "Suno Cover Settings (Recommended)";
+          block.appendChild(titleEl);
+          block.appendChild(el("div", "bc-row", "Mode: cover"));
+          function fmtPct(raw) {
+            if (raw === null || raw === undefined) return "—";
+            const n = Number(raw);
+            if (!isFinite(n)) return "—";
+            const pct = Math.round(n * 100);
+            return pct + "% (" + n + ")";
+          }
+          block.appendChild(el("div", "bc-row", "Audio Influence: " + fmtPct(sv.audio_influence)));
+          block.appendChild(el("div", "bc-row", "Style Influence: " + fmtPct(sv.style_influence)));
+          block.appendChild(el("div", "bc-row", "Weirdness: " + fmtPct(sv.weirdness)));
+          block.appendChild(el("div", "bc-row", "Lyrics Mode: " + (sv.lyrics_mode != null ? String(sv.lyrics_mode) : "—")));
+          block.appendChild(el("div", "bc-row", "Vocal Gender: " + (sv.vocal_gender != null ? String(sv.vocal_gender) : "—")));
+          if (item.suno_prompt_suggestion && String(item.suno_prompt_suggestion).trim()) {
+            const lab = document.createElement("div");
+            lab.className = "bc-row";
+            lab.style.fontWeight = "bold";
+            lab.style.marginTop = "8px";
+            lab.textContent = "Prompt suggestion:";
+            block.appendChild(lab);
+            const txt = document.createElement("div");
+            txt.className = "bc-row";
+            txt.style.marginTop = "4px";
+            txt.style.whiteSpace = "pre-wrap";
+            txt.textContent = String(item.suno_prompt_suggestion).trim();
+            block.appendChild(txt);
+          }
+          if (item.suno_reason_codes && Array.isArray(item.suno_reason_codes) && item.suno_reason_codes.length) {
+            const rcLab = document.createElement("div");
+            rcLab.className = "bc-row";
+            rcLab.style.fontWeight = "bold";
+            rcLab.style.marginTop = "6px";
+            rcLab.textContent = "Reason codes:";
+            block.appendChild(rcLab);
+            block.appendChild(el("div", "bc-row", item.suno_reason_codes.map(function (c) { return String(c); }).join(", ")));
+          }
+          panel.appendChild(block);
+        }
       } else {
         panel.appendChild(el("div", "bc-row", unlocked ? "No deep analysis text yet." : "Deep Analysis is locked for this track."));
         if (teaser) {
