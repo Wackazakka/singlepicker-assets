@@ -1,7 +1,6 @@
 (function () {
   "use strict";
-  console.log("[batch-compare] build", "2026-02-06-deep-unlocked-ui");
-  console.log("SP JS VERSION 2026-02-02-OAI");
+  console.log("SP JS VERSION FIX-DEEP-GREEN");
 
   if (window.__BATCH_COMPARE_V1_LOADED__) return;
   window.__BATCH_COMPARE_V1_LOADED__ = true;
@@ -57,6 +56,7 @@
     let lastGoodPreset = "hit_single";
     let lastGoodItems = [];
     let lastGoodScores = [];
+    let openAiListenTriggered = false;
 
     const PRESET_STORAGE_KEY = "sp_batch_compare_preset";
     const PRESET_ROLE_LABEL = {
@@ -527,8 +527,6 @@
       });
     }
 
-    // batch_id from URL is only used to *display* a batch after redirect (upload or MySongs).
-    // New compare-runs always generate a fresh batch_id (see handleStartBatch / MySongs handleCompare).
     function qsBatchId() {
       try {
         const u = new URL(window.location.href);
@@ -766,6 +764,51 @@
       const metadata = fj && fj.cyanite && typeof fj.cyanite === "object" ? fj.cyanite : null;
       const tags = metadata && Array.isArray(metadata.genre_tags) ? metadata.genre_tags : [];
       return tags.map(normalizeTagProb).filter(Boolean);
+    }
+
+    function getOpenAIStatus(item) {
+      if (!item || typeof item !== "object") return "pending";
+      const raw = item.openai_status
+        || item?.features_json?.sidecar?.openai?.status
+        || item?.features_json?.openai?.status
+        || item?.features_json?.openai?.sidecar?.status
+        || item?.features_json?.openai_sidecar?.status;
+      if (raw === null || raw === undefined) return "pending";
+      const s = String(raw).toLowerCase();
+      if (s === "finished" || s === "complete" || s === "done" || s === "ok" || s === "success") return "finished";
+      if (s === "error" || s === "failed" || s === "fail") return "error";
+      return "pending";
+    }
+
+    function getOpenAIDeepText(item) {
+      if (!item || typeof item !== "object") return null;
+      const t = item.openai_deep_text
+        || item?.features_json?.sidecar?.openai?.deep_text
+        || item?.features_json?.openai?.deep_text
+        || item?.features_json?.openai?.sidecar?.deep_text
+        || item?.features_json?.openai_sidecar?.deep_text;
+      if (t !== null && t !== undefined && String(t).trim() !== "") return String(t).trim();
+      const summary = item?.features_json?.sidecar?.openai?.judge?.summary
+        || item?.features_json?.openai?.sidecar?.judge?.summary;
+      if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
+      return null;
+    }
+
+    function getOpenAITeaser(item) {
+      if (!item || typeof item !== "object") return null;
+      const summary = item?.features_json?.sidecar?.openai?.judge?.summary
+        || item?.features_json?.openai?.sidecar?.judge?.summary;
+      if (summary !== null && summary !== undefined && String(summary).trim() !== "") return String(summary).trim();
+      return null;
+    }
+
+    function isOpenAIUnlocked(item, rankIndex) {
+      if (!item || typeof item !== "object") return rankIndex === 0;
+      if (item.openai_unlocked === true || item.deep_unlocked === true) return true;
+      const fj = item.features_json;
+      if (fj && typeof fj === "object" && fj.openai && typeof fj.openai === "object" && fj.openai.unlocked === true) return true;
+      if (rankIndex === 0) return true;
+      return false;
     }
 
     function formatMmSs(totalSeconds) {
@@ -1060,181 +1103,122 @@
       card.appendChild(wrap);
     }
 
-    function splitDeepTextIntoParts(text) {
-      if (!text || typeof text !== "string") return { throughSection9: text || "", afterSection9: "" };
-      var t = text.trim();
-      var idx9 = t.search(/\n9[.:]/i);
-      if (idx9 < 0) return { throughSection9: t, afterSection9: "" };
-      var from9 = t.slice(idx9);
-      var match10 = from9.match(/\n10[.:]/i);
-      var end9 = match10 ? idx9 + match10.index : t.length;
-      var throughSection9 = t.slice(0, end9).trimEnd();
-      var afterSection9 = match10 ? t.slice(idx9 + match10.index) : "";
-      return { throughSection9: throughSection9, afterSection9: afterSection9 };
+    function extractSectionOneTeaser(deepText) {
+      if (!deepText || typeof deepText !== "string") return null;
+      const match = deepText.match(/1\.\s*First impression[\s\S]*?(?=\n\d+\.\s)/i);
+      if (!match) return null;
+      let section = match[0];
+      section = section.replace(/1\.\s*First impression.*?\n/i, "").trim();
+      const sentences = section.match(/[^.!?]+[.!?]+/g);
+      if (sentences && sentences.length > 0) {
+        const firstTwo = sentences.slice(0, 2).join(" ").trim();
+        return firstTwo.length > 260 ? firstTwo.slice(0, 260) + "…" : firstTwo;
+      }
+      return section.length > 260 ? section.slice(0, 260) + "…" : section;
     }
 
-    function appendDeepListening(card, item, token, opts) {
-      var title = (item && item.title) ? String(item.title).trim() : "Untitled";
-      var unlocked = item.openai_unlocked === true;
-      var hasDeep = !!((item.openai_deep_text || "").trim());
-      var status = item.openai_status;
-      console.log("[ui] deep_btn_state", { title: title, unlocked: unlocked, hasDeep: hasDeep, status: status });
-
-      var wrap = el("div", "bc-deep-wrap");
-      var tbtn = document.createElement("button");
-      tbtn.type = "button";
-      tbtn.className = "bc-toggle bc-deep-btn";
-      tbtn.textContent = unlocked && hasDeep ? "Deep Analysis" : (unlocked ? "Deep Analysis" : "Deep Analysis (locked)");
-      if (unlocked) {
-        tbtn.classList.add("bc-deep-unlocked");
+    function appendDeepAnalysis(card, item, rankIndex) {
+      if (!card || !item) return;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sp-da-btn";
+      const isUnlocked = !!(item.openai_deep_text && String(item.openai_deep_text).trim());
+      const isPending = item.openai_status === "pending";
+      const isLocked = !isUnlocked && !isPending;
+      if (isUnlocked) {
+        btn.classList.add("is-unlocked");
+      } else if (isPending) {
+        btn.classList.add("is-pending");
       } else {
-        tbtn.classList.add("bc-deep-locked");
+        btn.classList.add("is-locked");
       }
+      btn.textContent = "Deep Analysis";
+      const unlocked = item && item.openai_unlocked === true;
+      const panel = el("div", "bc-deep-panel");
+      panel.style.display = "none";
+      const deepText = (item.openai_deep_text && String(item.openai_deep_text).trim()) ? String(item.openai_deep_text).trim() : "";
+      const teaser = (item.openai_teaser && String(item.openai_teaser).trim()) ? String(item.openai_teaser).trim() : "";
+      if (unlocked && deepText) {
+        const pre = document.createElement("pre");
+        pre.style.whiteSpace = "pre-wrap";
+        pre.style.margin = "0";
+        pre.style.fontSize = "12px";
+        pre.style.color = "#374151";
+        pre.textContent = deepText;
+        panel.appendChild(pre);
 
-      var body = el("div", "bc-deep-body");
-      body.style.display = "none";
-      if (unlocked && (item.openai_deep_text || "").trim()) {
-        var rawDeep = (item.openai_deep_text || "").trim();
-        var parts = splitDeepTextIntoParts(rawDeep);
-
-        var p1 = document.createElement("div");
-        p1.style.whiteSpace = "pre-wrap";
-        p1.style.fontSize = "12px";
-        p1.style.color = "#374151";
-        p1.textContent = parts.throughSection9;
-        body.appendChild(p1);
-
-        var hasSuno = (item.suno_slider_values && typeof item.suno_slider_values === "object") || (item.suno_policy && typeof item.suno_policy === "object");
-        if (hasSuno) {
-          var sv = item.suno_slider_values || (item.suno_policy && item.suno_policy.slider_values) || {};
-          var is01 = sv.weirdness != null && sv.weirdness <= 1 && sv.weirdness >= 0;
-          function fmtVal(v) {
-            if (v == null) return "—";
-            var n = Number(v);
-            if (!isFinite(n)) return "—";
-            if (is01) return Math.round(n * 100) + "% (" + n + ")";
-            return n + "%";
-          }
-          var block = document.createElement("div");
-          block.className = "bc-suno-policy";
+        if (item.suno_slider_values && typeof item.suno_slider_values === "object") {
+          const sv = item.suno_slider_values;
+          const block = el("div", "bc-suno-policy");
           block.style.marginTop = "14px";
           block.style.paddingTop = "10px";
           block.style.borderTop = "1px solid #e5e7eb";
-          var titleEl = document.createElement("div");
+          const titleEl = document.createElement("div");
           titleEl.className = "bc-row";
           titleEl.style.fontWeight = "bold";
           titleEl.style.marginBottom = "6px";
           titleEl.textContent = "Suno Cover Settings (Recommended)";
           block.appendChild(titleEl);
-          var mode = (item.suno_policy && item.suno_policy.recommended_mode) ? String(item.suno_policy.recommended_mode) : "cover";
-          mode = mode.replace(/^./, function (c) { return c.toUpperCase(); });
-          block.appendChild(el("div", "bc-row", "Mode: " + mode));
-          block.appendChild(el("div", "bc-row", "Weirdness: " + fmtVal(sv.weirdness)));
-          block.appendChild(el("div", "bc-row", "Style Influence: " + fmtVal(sv.style_influence)));
-          block.appendChild(el("div", "bc-row", "Audio Influence: " + fmtVal(sv.audio_influence)));
+          block.appendChild(el("div", "bc-row", "Mode: cover"));
+          function fmtPct(raw) {
+            if (raw === null || raw === undefined) return "—";
+            const n = Number(raw);
+            if (!isFinite(n)) return "—";
+            const pct = Math.round(n * 100);
+            return pct + "% (" + n + ")";
+          }
+          block.appendChild(el("div", "bc-row", "Audio Influence: " + fmtPct(sv.audio_influence)));
+          block.appendChild(el("div", "bc-row", "Style Influence: " + fmtPct(sv.style_influence)));
+          block.appendChild(el("div", "bc-row", "Weirdness: " + fmtPct(sv.weirdness)));
           block.appendChild(el("div", "bc-row", "Lyrics Mode: " + (sv.lyrics_mode != null ? String(sv.lyrics_mode) : "—")));
           block.appendChild(el("div", "bc-row", "Vocal Gender: " + (sv.vocal_gender != null ? String(sv.vocal_gender) : "—")));
-          var promptText = item.suno_prompt_suggestion || (item.suno_policy && item.suno_policy.prompt_suggestion);
-          if (promptText && String(promptText).trim()) {
-            var lab = document.createElement("div");
+          if (item.suno_prompt_suggestion && String(item.suno_prompt_suggestion).trim()) {
+            const lab = document.createElement("div");
             lab.className = "bc-row";
             lab.style.fontWeight = "bold";
             lab.style.marginTop = "8px";
             lab.textContent = "Prompt suggestion:";
             block.appendChild(lab);
-            var txt = document.createElement("div");
+            const txt = document.createElement("div");
             txt.className = "bc-row";
             txt.style.marginTop = "4px";
             txt.style.whiteSpace = "pre-wrap";
-            txt.textContent = String(promptText).trim();
+            txt.textContent = String(item.suno_prompt_suggestion).trim();
             block.appendChild(txt);
           }
-          if (item.suno_policy && item.suno_policy.rationale && item.suno_policy.rationale.length) {
-            var whyLabel = document.createElement("div");
-            whyLabel.className = "bc-row";
-            whyLabel.style.fontWeight = "bold";
-            whyLabel.style.marginTop = "8px";
-            whyLabel.textContent = "Why:";
-            block.appendChild(whyLabel);
-            for (var r = 0; r < item.suno_policy.rationale.length; r++) {
-              block.appendChild(el("div", "bc-row", "• " + item.suno_policy.rationale[r]));
-            }
+          if (item.suno_reason_codes && Array.isArray(item.suno_reason_codes) && item.suno_reason_codes.length) {
+            const rcLab = document.createElement("div");
+            rcLab.className = "bc-row";
+            rcLab.style.fontWeight = "bold";
+            rcLab.style.marginTop = "6px";
+            rcLab.textContent = "Reason codes:";
+            block.appendChild(rcLab);
+            block.appendChild(el("div", "bc-row", item.suno_reason_codes.map(function (c) { return String(c); }).join(", ")));
           }
-          var copyBtn = document.createElement("button");
-          copyBtn.type = "button";
-          copyBtn.className = "bc-btn";
-          copyBtn.style.marginTop = "8px";
-          copyBtn.textContent = "Copy Suno settings";
-          copyBtn.addEventListener("click", function () {
-            var lines = ["Mode: cover"];
-            lines.push("Weirdness: " + fmtVal(sv.weirdness));
-            lines.push("Style Influence: " + fmtVal(sv.style_influence));
-            lines.push("Audio Influence: " + fmtVal(sv.audio_influence));
-            lines.push("Lyrics Mode: " + (sv.lyrics_mode != null ? String(sv.lyrics_mode) : "—"));
-            lines.push("Vocal Gender: " + (sv.vocal_gender != null ? String(sv.vocal_gender) : "—"));
-            if (promptText && String(promptText).trim()) lines.push("Prompt: " + String(promptText).trim());
-            var copyStr = lines.join("\n");
-            function done() { copyBtn.textContent = "Copied"; setTimeout(function () { copyBtn.textContent = "Copy Suno settings"; }, 1500); }
-            if (typeof navigator.clipboard !== "undefined" && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(copyStr).then(done).catch(function () {
-                try {
-                  var ta = document.createElement("textarea");
-                  ta.value = copyStr;
-                  ta.style.position = "fixed";
-                  ta.style.left = "-9999px";
-                  document.body.appendChild(ta);
-                  ta.select();
-                  document.execCommand("copy");
-                  document.body.removeChild(ta);
-                  done();
-                } catch (e) {}
-              });
-            } else {
-              try {
-                var ta = document.createElement("textarea");
-                ta.value = copyStr;
-                ta.style.position = "fixed";
-                ta.style.left = "-9999px";
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand("copy");
-                document.body.removeChild(ta);
-                done();
-              } catch (e) {}
-            }
-          });
-          block.appendChild(copyBtn);
-          body.appendChild(block);
+          panel.appendChild(block);
         }
-
-        if (parts.afterSection9) {
-          var p2 = document.createElement("div");
-          p2.style.whiteSpace = "pre-wrap";
-          p2.style.fontSize = "12px";
-          p2.style.color = "#374151";
-          p2.style.marginTop = "14px";
-          p2.textContent = parts.afterSection9;
-          body.appendChild(p2);
+      } else {
+        panel.appendChild(el("div", "bc-row", unlocked ? "No deep analysis text yet." : "Deep Analysis is locked for this track."));
+        if (teaser) {
+          const label = el("div", "bc-row", "Teaser:");
+          label.style.marginTop = "8px";
+          label.style.fontSize = "11px";
+          label.style.color = "#9ca3af";
+          panel.appendChild(label);
+          const teaserEl = document.createElement("div");
+          teaserEl.style.marginTop = "4px";
+          teaserEl.style.fontSize = "12px";
+          teaserEl.style.color = "#6b7280";
+          teaserEl.textContent = teaser;
+          panel.appendChild(teaserEl);
         }
-      } else if (!unlocked) {
-        body.appendChild(el("div", "bc-row", "Unlock this track to view the full deep analysis."));
       }
-
-      tbtn.addEventListener("click", function () {
-        var open = body.style.display !== "none";
-        body.style.display = open ? "none" : "block";
+      btn.addEventListener("click", function () {
+        const open = panel.style.display !== "none";
+        panel.style.display = open ? "none" : "block";
       });
-      wrap.appendChild(tbtn);
-      wrap.appendChild(body);
-      card.appendChild(wrap);
-
-      if (unlocked) {
-        tbtn.classList.remove("bc-deep-locked");
-        tbtn.classList.add("bc-deep-unlocked");
-      }
-    }
-
-    function appendOpenAIListen(card, item) {
+      card.appendChild(btn);
+      card.appendChild(panel);
     }
 
     function appendSegmentInfo(card, item, showDebug) {
@@ -1495,7 +1479,7 @@
       }
     }
 
-      async function renderCompare(items, batchId, preset, token) {
+    async function renderCompare(items, batchId, preset) {
       console.debug("[Batch Compare] preset", { preset: preset || "hit_single", batchId: batchId || null });
       if (elList) elList.innerHTML = "";
 
@@ -1871,13 +1855,8 @@
               }
 
               appendSpotifyPitch(card, item);
+              appendDeepAnalysis(card, item, idx);
 
-              appendDeepListening(card, item, token, {
-                isLead: sid === leadId,
-                treatLeadAsUnlocked: true
-              });
-
-              appendOpenAIListen(card, item);
               elList.appendChild(card);
             } catch (e) {
               console.error("[Batch Compare] card render failed", item?.id, e);
@@ -2264,9 +2243,8 @@
           }
 
           appendSpotifyPitch(card, item);
+          appendDeepAnalysis(card, item, idx);
 
-          appendDeepListening(card, item, token, { isLead: sid === leadId, treatLeadAsUnlocked: false });
-          appendOpenAIListen(card, item);
           elList.appendChild(card);
         } catch (e) {
           console.error("[Batch Compare] card render failed", item?.id, e);
@@ -2340,6 +2318,21 @@
       }
     }
 
+    function normalizeItem(item) {
+      if (!item || typeof item !== "object") return item;
+      var out = {};
+      for (var key in item) {
+        if (Object.prototype.hasOwnProperty.call(item, key)) out[key] = item[key];
+      }
+      if ("rank_index" in item) out.rank_index = item.rank_index;
+      if ("openai_status" in item) out.openai_status = item.openai_status;
+      if ("openai_teaser" in item) out.openai_teaser = item.openai_teaser;
+      if ("openai_deep_text" in item) out.openai_deep_text = item.openai_deep_text;
+      if ("openai_unlocked" in item) out.openai_unlocked = item.openai_unlocked;
+      if ("deep_unlocked" in item) out.deep_unlocked = item.deep_unlocked;
+      return out;
+    }
+
     async function fetchBatch(batchId) {
       const token = getSupabaseAccessTokenFromLocalStorage();
       if (!token) {
@@ -2379,7 +2372,43 @@
 
       const data = await res.json();
       console.debug("[Batch Compare] Batch fetch success", { itemsCount: data?.items?.length || 0 });
-      return data;
+      var items = (data.items || []).map(normalizeItem);
+      return { items: items, count: items.length, batch_id: data.batch_id || batchId };
+    }
+
+    /** Fetch compare view by song IDs (mysongs mode). Backend should expose GET /batch/by-songs?song_ids=id1,id2,... */
+    async function fetchCompareBySongIds(songIds) {
+      const token = getSupabaseAccessTokenFromLocalStorage();
+      if (!token) {
+        showError("You must be logged in to view this compare.");
+        throw new Error("NO_AUTH");
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT);
+      const param = songIds.join(",");
+      const url = API_BASE + "/batch/by-songs?song_ids=" + encodeURIComponent(param);
+      console.debug("[Batch Compare] Fetching by song IDs", { songIdsLen: songIds.length, url: url });
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.status === 401) {
+        showError("You must be logged in to view this compare.");
+        throw new Error("UNAUTHORIZED");
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(function () { return ""; });
+        console.error("[Batch Compare] By-songs fetch failed", { status: res.status, text: text.substring(0, 200) });
+        throw new Error("HTTP_" + res.status);
+      }
+      const data = await res.json();
+      var items = (data.items || []).map(normalizeItem);
+      return { items: items, count: items.length, batch_id: data.batch_id || null };
     }
 
     async function uploadOne(file) {
@@ -2455,11 +2484,12 @@
 
     function fetchOpenAIAnalyzeWithRetry(songId, token, maxRetries) {
       maxRetries = maxRetries != null ? maxRetries : 3;
-      const url = API_BASE + "/sidecar/openai/listen";      
+      const url = API_BASE + "/sidecar/openai/analyze";
       const body = JSON.stringify({
         song_id: songId,
         force: true,
-        debug: false
+        listen: true,
+        max_seconds: 300
       });
       const headers = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = "Bearer " + token;
@@ -2484,7 +2514,9 @@
       return attempt(0);
     }
 
-    function triggerOpenAIListenBackground(songIds, token) {
+    function triggerOpenAIListenBackground(songIds, token, onDone, isMySongsMode) {
+      return;
+      if (isMySongsMode) return;
       if (!songIds || songIds.length === 0) return;
       const total = songIds.length;
       let done = 0;
@@ -2511,13 +2543,20 @@
       runWithConcurrencyLimit(tasks, 2).then(
         function () {
           setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          if (typeof onDone === "function") {
+            try { onDone(); } catch (e) {}
+          }
           setTimeout(function () { setProgress(""); }, 3000);
         },
         function () {
           setProgress("OpenAI listen: done (" + total + "/" + total + ")");
+          if (typeof onDone === "function") {
+            try { onDone(); } catch (e) {}
+          }
           setTimeout(function () { setProgress(""); }, 3000);
         }
-      );
+      );      
+
     }
 
     function baseTitleFromFilename(name) {
@@ -2548,7 +2587,6 @@
       setMsg("Preparing…");
 
       const batchId = uuidv4();
-      console.log("[batch] new batch_id", batchId, "source=upload");
       const songIds = [];
 
       try {
@@ -2599,6 +2637,9 @@
     }
 
     async function init() {
+      const INITIAL_HREF = window.location.href;
+      const qs = new URL(INITIAL_HREF).searchParams;
+
       showLoading();
 
       const session = await findSupabaseSessionWithRetry(3, 500);
@@ -2609,9 +2650,39 @@
       const token = session.access_token;
       const debugMode = qsDebug();
 
-      const batchId = qsBatchId();
+      const batchId = (qs.get("batch_id") || "").trim() || null;
+      const mode = (qs.get("mode") || "").trim();
+      const songIdsParam = (qs.get("song_ids") || qs.get("songIds") || "").trim();
+      const songIds = songIdsParam.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      console.log("[batch] parsed params", { INITIAL_HREF: INITIAL_HREF, mode: mode, songIdsLen: songIds.length, songIds: songIds });
 
-      if (!batchId) {
+      const isMySongsMode = (mode.toLowerCase() === "mysongs" || mode.toLowerCase() === "my-songs" || mode.toLowerCase() === "library") || (!batchId && songIds.length > 0);
+
+      if (mode.toLowerCase() === "mysongs" || mode.toLowerCase() === "my-songs" || mode.toLowerCase() === "library") {
+        if (!songIds.length) {
+          console.warn("[batch] mysongs mode but no song ids found in URL", { INITIAL_HREF: INITIAL_HREF });
+          showUploader();
+          setMsg("No songs selected. Add song_ids or songIds to the URL.");
+          if (elFiles) {
+            elFiles.addEventListener("change", function () {
+              addFilesFromPicker(elFiles.files);
+              try { elFiles.value = ""; } catch (_) {}
+            });
+          }
+          if (elReset) {
+            elReset.addEventListener("click", function () {
+              resetSelection();
+              setMsg("Select at least 3 files.");
+            });
+          }
+          if (elStart) {
+            elStart.addEventListener("click", function () { handleStartBatch(token); });
+          }
+          return;
+        }
+      }
+
+      if (!batchId && !songIds.length) {
         showUploader();
 
         resetSelection();
@@ -2660,9 +2731,21 @@
       const loadAndRender = async (preset) => {
         const p = preset || "hit_single";
         try {
-          const data = await fetchBatch(batchId);
+          let data;
+          if (batchId) {
+            console.log("[batch] branch=batchId");
+            data = await fetchBatch(batchId);
+          } else if (songIds && songIds.length > 0) {
+            console.log("[batch] branch=mysongs");
+            data = await fetchCompareBySongIds(songIds);
+          } else {
+            console.log("[batch] branch=empty");
+            showError("No batch or songs to load.");
+            return;
+          }
           stopPlayback();
-          await renderCompare(data.items || [], batchId, p);
+          const effectiveBatchId = data.batch_id != null ? data.batch_id : batchId;
+          await renderCompare(data.items || [], effectiveBatchId, p);
           lastGoodItems = (data.items || []).slice();
           lastGoodPreset = p;
         } catch (e) {
@@ -2707,7 +2790,7 @@
             currentPreset = lastGoodPreset || "hit_single";
             if (elStrategy) elStrategy.value = currentPreset;
             try {
-              await renderCompare(lastGoodItems || currentItems, batchId, currentPreset, token);
+              await renderCompare(lastGoodItems || currentItems, batchId, currentPreset);
             } catch (_) {}
           }
         });
@@ -2717,12 +2800,6 @@
         setPresetInUrl(currentPreset);
         storePreset(currentPreset);
         await loadAndRender(currentPreset);
-        console.log("=== AFTER loadAndRender ===");
-        console.log("[BatchCompare] lastGoodItems =", lastGoodItems);
-        console.log("currentItems =", currentItems);
-        console.log("[BatchCompare] lastGoodItems len =", (lastGoodItems || []).length);
-        console.log("[BatchCompare] currentItems len =", (currentItems || []).length);
-      
       } catch (e) {
         const errMsg = String(e?.message || e || "");
         if (errMsg === "NO_AUTH" || errMsg === "UNAUTHORIZED" || errMsg.includes("401")) {
