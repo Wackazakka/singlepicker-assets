@@ -5,9 +5,8 @@
   if (window.__BATCH_COMPARE_V1_LOADED__) return;
   window.__BATCH_COMPARE_V1_LOADED__ = true;
 
-  function initBatchCompare() {
+  async function initBatchCompare() {
     console.log("Batch Compare init running");
-    // Find container via stable selector
     const container = document.getElementById("batch-compare-v1") || document.querySelector("[data-batch-compare]");
     if (!container) {
       console.warn("[BatchCompare] Container not found");
@@ -49,6 +48,9 @@
     const elLead = container.querySelector("#bc-lead");
     const elSummary = container.querySelector("#bc-summary");
     const elList = container.querySelector("#bc-list");
+
+    let loadingTimeoutId = null;
+    const LOADING_TIMEOUT_MS = 8000;
 
     // Store current items and preset for re-ranking
     let currentItems = [];
@@ -406,6 +408,13 @@
     let selectedFiles = [];
 
     function showLoading() {
+      if (loadingTimeoutId) clearTimeout(loadingTimeoutId);
+      loadingTimeoutId = setTimeout(function () {
+        loadingTimeoutId = null;
+        if (elLoading && elLoading.style.display === "block") {
+          showError("Batch Compare is taking too long. Try a hard reload (Ctrl+Shift+R or Cmd+Shift+R). If you use a Webflow embed, check for an embed SHA mismatch and update to the latest script.");
+        }
+      }, LOADING_TIMEOUT_MS);
       if (elLoading) elLoading.style.display = "block";
       if (elError) elError.style.display = "none";
       if (elUploader) elUploader.style.display = "none";
@@ -414,6 +423,7 @@
     }
 
     function showError(msg) {
+      if (loadingTimeoutId) { clearTimeout(loadingTimeoutId); loadingTimeoutId = null; }
       if (elLoading) elLoading.style.display = "none";
       if (elError) elError.style.display = "block";
       if (elUploader) elUploader.style.display = "none";
@@ -422,6 +432,7 @@
     }
 
     function showUploader() {
+      if (loadingTimeoutId) { clearTimeout(loadingTimeoutId); loadingTimeoutId = null; }
       if (elLoading) elLoading.style.display = "none";
       if (elError) elError.style.display = "none";
       if (elUploader) elUploader.style.display = "block";
@@ -429,6 +440,7 @@
     }
 
     function showCompare() {
+      if (loadingTimeoutId) { clearTimeout(loadingTimeoutId); loadingTimeoutId = null; }
       if (elLoading) elLoading.style.display = "none";
       if (elError) elError.style.display = "none";
       if (elUploader) elUploader.style.display = "none";
@@ -1398,15 +1410,7 @@
         var sunoContent = document.createElement("div");
         sunoContent.className = "sp-suno-content";
         sunoContent.style.display = "none";
-        var songId = String(item.id || item.song_id || "").trim() || "unknown";
-        var sunoStorageKey = "sp_suno_open_" + songId;
-        var storedOpen = typeof sessionStorage !== "undefined" && sessionStorage.getItem(sunoStorageKey) === "1";
-        var isTopPick = (item.rank_index !== undefined ? item.rank_index === 0 : rankIndex === 0);
-        if (storedOpen || isTopPick) {
-          sunoContent.style.display = "block";
-          chevron.textContent = "\u25be";
-          if (typeof sessionStorage !== "undefined") sessionStorage.setItem(sunoStorageKey, "1");
-        }
+        chevron.textContent = "\u25b8";
 
         var sv = (item.suno_slider_values && typeof item.suno_slider_values === "object") ? item.suno_slider_values : {};
         var block = el("div", "bc-suno-policy");
@@ -1480,7 +1484,6 @@
           var open = sunoContent.style.display === "block";
           sunoContent.style.display = open ? "none" : "block";
           chevron.textContent = open ? "\u25b8" : "\u25be";
-          if (typeof sessionStorage !== "undefined") sessionStorage.setItem(sunoStorageKey, open ? "0" : "1");
         });
         sunoWrapper.appendChild(sunoToggle);
         sunoWrapper.appendChild(sunoContent);
@@ -3118,7 +3121,16 @@
       }
     }
 
-    init();
+    try {
+      await init();
+    } catch (e) {
+      console.error("[Batch Compare] fatal init error", e);
+      if (elLoading) elLoading.style.display = "none";
+      if (elError) {
+        elError.style.display = "block";
+        elError.textContent = "Something went wrong. Please try again or hard reload (Ctrl+Shift+R / Cmd+Shift+R).";
+      }
+    }
   }
 
   if (document.readyState === "loading") {
