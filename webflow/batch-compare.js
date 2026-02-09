@@ -719,6 +719,8 @@
       { codes: ["vocal_mismatch", "unclear_lead"], text: "Make vocal delivery more consistent; strengthen chorus vocal presence with subtle doubles." }
     ];
 
+    var NON_PRODUCTION_CODES = ["contextual_release"];
+
     function getSurgicalEdits(codes) {
       if (!codes || !codes.length) return { edit1: null, edit2: null, edit1Code: null, edit2Code: null };
       var edit1 = null;
@@ -775,6 +777,7 @@
       var usedStrat = {};
       for (var i = 0; i < (codes || []).length; i++) {
         var code = codes[i];
+        if (NON_PRODUCTION_CODES.indexOf(code) !== -1) continue;
         if (usedCodes[code]) continue;
         var strat = reasonCodeToStrategy(code);
         if (strat && !usedStrat[strat]) {
