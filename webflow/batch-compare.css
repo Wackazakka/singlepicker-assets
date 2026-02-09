@@ -420,3 +420,27 @@ textarea.sp-suno-prompt {
   font-family: inherit;
   font-size: 12px;
 }
+
+.sp-suno-wrapper {
+  margin-top: 12px;
+}
+.sp-suno-toggle {
+  width: 100%;
+  text-align: left;
+  background: #f6f6f6;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sp-suno-content {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fafafa;
+}
+.sp-chevron {
+  float: right;
+}
