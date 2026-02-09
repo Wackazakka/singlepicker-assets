@@ -1385,11 +1385,34 @@
         pre.textContent = deepText;
         panel.appendChild(pre);
 
+        var sunoWrapper = document.createElement("div");
+        sunoWrapper.className = "sp-suno-wrapper";
+        var sunoToggle = document.createElement("button");
+        sunoToggle.type = "button";
+        sunoToggle.className = "sp-suno-toggle";
+        var chevron = document.createElement("span");
+        chevron.className = "sp-chevron";
+        chevron.textContent = "\u25b8";
+        sunoToggle.appendChild(document.createTextNode("\u2699\ufe0f Suno Revision Plan "));
+        sunoToggle.appendChild(chevron);
+        var sunoContent = document.createElement("div");
+        sunoContent.className = "sp-suno-content";
+        sunoContent.style.display = "none";
+        var songId = String(item.id || item.song_id || "").trim() || "unknown";
+        var sunoStorageKey = "sp_suno_open_" + songId;
+        var storedOpen = typeof sessionStorage !== "undefined" && sessionStorage.getItem(sunoStorageKey) === "1";
+        var isTopPick = (item.rank_index !== undefined ? item.rank_index === 0 : rankIndex === 0);
+        if (storedOpen || isTopPick) {
+          sunoContent.style.display = "block";
+          chevron.textContent = "\u25be";
+          if (typeof sessionStorage !== "undefined") sessionStorage.setItem(sunoStorageKey, "1");
+        }
+
         var sv = (item.suno_slider_values && typeof item.suno_slider_values === "object") ? item.suno_slider_values : {};
         var block = el("div", "bc-suno-policy");
-        block.style.marginTop = "14px";
-        block.style.paddingTop = "10px";
-        block.style.borderTop = "1px solid #e5e7eb";
+        block.style.marginTop = "0";
+        block.style.paddingTop = "0";
+        block.style.borderTop = "none";
         var titleEl = document.createElement("div");
         titleEl.className = "bc-row";
         titleEl.style.fontWeight = "bold";
@@ -1452,7 +1475,16 @@
         textarea.value = promptText;
         textarea.setAttribute("rows", "8");
         block.appendChild(textarea);
-        panel.appendChild(block);
+        sunoContent.appendChild(block);
+        sunoToggle.addEventListener("click", function () {
+          var open = sunoContent.style.display === "block";
+          sunoContent.style.display = open ? "none" : "block";
+          chevron.textContent = open ? "\u25b8" : "\u25be";
+          if (typeof sessionStorage !== "undefined") sessionStorage.setItem(sunoStorageKey, open ? "0" : "1");
+        });
+        sunoWrapper.appendChild(sunoToggle);
+        sunoWrapper.appendChild(sunoContent);
+        panel.appendChild(sunoWrapper);
 
         var primary = codes.length ? reasonCodeToFocus(codes[0]) : null;
         var strat = codes.length ? reasonCodeToStrategy(codes[0]) : null;
