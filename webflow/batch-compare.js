@@ -771,7 +771,33 @@
       return { edit1: edit1, edit2: edit2, edit1Code: edit1Code, edit2Code: edit2Code };
     }
 
-    function buildSunoCoverPrompt(codes, edit1, edit2, edit1Code, edit2Code) {
+    function isLowEnergyReflectiveEarlyHook(item, codes) {
+      var codeList = codes && codes.length ? codes : [];
+      var hasLateHook = codeList.some(function (c) { return c === "late_hook" || c === "weak_opening" || c === "hook_late"; });
+      if (hasLateHook) return false;
+      var hasContrastOrPayoffOrStructure = codeList.some(function (c) {
+        return c === "low_contrast" || c === "needs_dynamic_shift" || c === "chorus_not_lifting" ||
+          c === "flat_chorus" || c === "flat_dynamics" || c === "flat_bass" || c === "structure_drifts" || c === "too_long";
+      });
+      if (!hasContrastOrPayoffOrStructure && item && (item.openai_deep_text || item.openai_deepText)) {
+        var dt = String(item.openai_deep_text || item.openai_deepText || "").trim();
+        if (dt.length > 80 && /structural contrast|dynamic shift|payoff|reflective|calm|low energy|contrast.*low|steady energy/i.test(dt)) hasContrastOrPayoffOrStructure = true;
+      }
+      if (!hasContrastOrPayoffOrStructure) return false;
+      var energyLow = false;
+      if (item) {
+        var bucket = (item.energy_bucket && String(item.energy_bucket).trim()) || "";
+        var energy = (item.energy && String(item.energy).trim()) || "";
+        if (bucket.toLowerCase() === "low" || energy.toLowerCase() === "low") energyLow = true;
+        if (!energyLow && (item.openai_deep_text || item.openai_deepText)) {
+          var t = String(item.openai_deep_text || item.openai_deepText || "").trim();
+          if (/energy.*\blow\b|low energy|reflective|calm\s+track|minimal energy|low-energy|soft\s+energy/i.test(t)) energyLow = true;
+        }
+      }
+      return energyLow;
+    }
+
+    function buildSunoCoverPrompt(codes, edit1, edit2, edit1Code, edit2Code, item) {
       var lines = [];
       lines.push("Refinement pass: improve cohesion and impact while staying true to the original.");
       lines.push("");
@@ -781,6 +807,24 @@
       lines.push("- Do not significantly alter the harmonic progression.");
       lines.push("- The goal is refinement and cohesion, not stylistic transformation.");
       lines.push("");
+
+      if (item && isLowEnergyReflectiveEarlyHook(item, codes)) {
+        lines.push("Primary structural edit: Introduce one clear dynamic pivot and a chorus lift without moving sections (contrast via arrangement density, not structure timing).");
+        lines.push("");
+        lines.push("Secondary refinements:");
+        lines.push("- Add a 1–2 beat micro-drop/breath right before the chorus to create anticipation.");
+        lines.push("- Increase chorus density slightly (subtle doubles/harmony pad/wider space) while preserving vocal phrasing.");
+        lines.push("- Bring the vocal forward a touch; add very subtle chorus support doubles for memorability.");
+        lines.push("- Add low-end definition (slightly clearer bass/kick relationship) without changing the groove or making the bass busier.");
+        lines.push("- Keep the intro intentionally sparse; do NOT over-layer the first 30 seconds.");
+        lines.push("");
+        lines.push("Do not:");
+        lines.push("- Do not introduce new genre elements.");
+        lines.push("- Do not over-layer the first 30 seconds.");
+        lines.push("- Do not add a contrasting genre bridge.");
+        return lines.join("\n");
+      }
+
       if (edit1) {
         lines.push("Primary structural edit: " + edit1);
         lines.push("");
@@ -1468,7 +1512,7 @@
           }
           block.appendChild(ol);
         }
-        var promptText = buildSunoCoverPrompt(codes, edits.edit1, edits.edit2, edits.edit1Code, edits.edit2Code);
+        var promptText = buildSunoCoverPrompt(codes, edits.edit1, edits.edit2, edits.edit1Code, edits.edit2Code, item);
         var promptTitle = document.createElement("div");
         promptTitle.className = "sp-suno-title";
         promptTitle.textContent = "Suno Cover Prompt (copy/paste)";
