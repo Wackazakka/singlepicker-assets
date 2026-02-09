@@ -656,11 +656,8 @@
       { codes: ["structure_drifts", "too_long"], text: "Tighten structure and remove drifting sections to improve replay focus." }
     ];
     var EDIT2_GROUPS = [
-      { codes: ["crossover_segment", "needs_contrast"], text: "Lock the track into one coherent sonic palette; reduce contrasting genre textures." },
-      { codes: ["low_identity", "weak_early_identity", "generic_profile"], text: "Add one distinct signature motif/timbre early and keep it recurring." },
-      { codes: ["arrangement_clutter", "cluttered_mix"], text: "Simplify arrangement (fewer competing layers); keep one dominant lead at a time." },
-      { codes: ["vocal_mismatch", "unclear_lead"], text: "Clarify a consistent vocal persona and strengthen chorus presence with subtle support/doubles." },
-      { codes: ["energy_mismatch"], text: "Adjust density/groove to better match intended energy without changing the song's core." }
+      { codes: ["arrangement_clutter", "cluttered_mix"], text: "Reduce competing layers in verses; keep one dominant lead element at a time." },
+      { codes: ["vocal_mismatch", "unclear_lead"], text: "Make vocal delivery more consistent; strengthen chorus vocal presence with subtle doubles." }
     ];
 
     function getSurgicalEdits(codes) {
@@ -1354,7 +1351,7 @@
         var surgicalList = [];
         if (edits.edit1) surgicalList.push(edits.edit1);
         if (edits.edit2) surgicalList.push(edits.edit2);
-        if (surgicalList.length) {
+        if (edits.edit1 != null || edits.edit2 != null) {
           var editsTitle = document.createElement("div");
           editsTitle.className = "sp-suno-title sp-suno-edits";
           editsTitle.textContent = "Surgical edits (max 2)";
