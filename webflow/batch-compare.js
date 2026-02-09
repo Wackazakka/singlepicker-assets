@@ -650,6 +650,90 @@
       }
     }
 
+    var EDIT1_GROUPS = [
+      { codes: ["weak_opening", "late_hook", "hook_late"], text: "Accelerate hook delivery and shorten the intro (surface the defining hook very early)." },
+      { codes: ["chorus_not_lifting", "flat_chorus", "energy_plateau"], text: "Create a clearer chorus lift (more payoff vs verse) through dynamics/harmony/arrangement contrast." },
+      { codes: ["structure_drifts", "too_long"], text: "Tighten structure and remove drifting sections to improve replay focus." }
+    ];
+    var EDIT2_GROUPS = [
+      { codes: ["crossover_segment", "needs_contrast"], text: "Lock the track into one coherent sonic palette; reduce contrasting genre textures." },
+      { codes: ["low_identity", "weak_early_identity", "generic_profile"], text: "Add one distinct signature motif/timbre early and keep it recurring." },
+      { codes: ["arrangement_clutter", "cluttered_mix"], text: "Simplify arrangement (fewer competing layers); keep one dominant lead at a time." },
+      { codes: ["vocal_mismatch", "unclear_lead"], text: "Clarify a consistent vocal persona and strengthen chorus presence with subtle support/doubles." },
+      { codes: ["energy_mismatch"], text: "Adjust density/groove to better match intended energy without changing the song's core." }
+    ];
+
+    function getSurgicalEdits(codes) {
+      if (!codes || !codes.length) return { edit1: null, edit2: null, edit1Code: null, edit2Code: null };
+      var edit1 = null;
+      var edit1Code = null;
+      for (var i = 0; i < codes.length; i++) {
+        var c = codes[i];
+        for (var g = 0; g < EDIT1_GROUPS.length; g++) {
+          if (EDIT1_GROUPS[g].codes.indexOf(c) !== -1) {
+            edit1 = EDIT1_GROUPS[g].text;
+            edit1Code = c;
+            break;
+          }
+        }
+        if (edit1) break;
+      }
+      var edit2 = null;
+      var edit2Code = null;
+      for (var j = 0; j < codes.length; j++) {
+        var c2 = codes[j];
+        if (c2 === edit1Code) continue;
+        for (var h = 0; h < EDIT2_GROUPS.length; h++) {
+          if (EDIT2_GROUPS[h].codes.indexOf(c2) !== -1) {
+            edit2 = EDIT2_GROUPS[h].text;
+            edit2Code = c2;
+            break;
+          }
+        }
+        if (edit2) break;
+      }
+      return { edit1: edit1, edit2: edit2, edit1Code: edit1Code, edit2Code: edit2Code };
+    }
+
+    function buildSunoCoverPrompt(codes, edit1, edit2, edit1Code, edit2Code) {
+      var lines = [];
+      lines.push("Refinement pass: improve cohesion and impact while staying true to the original.");
+      lines.push("");
+      lines.push("Guardrails (always apply):");
+      lines.push("- Preserve the original melodic structure and vocal phrasing.");
+      lines.push("- Maintain the core emotional tone of the track.");
+      lines.push("- Do not significantly alter the harmonic progression.");
+      lines.push("- The goal is refinement and cohesion, not stylistic transformation.");
+      lines.push("");
+      if (edit1) {
+        lines.push("Primary structural edit: " + edit1);
+        lines.push("");
+      }
+      if (edit2) {
+        lines.push("Primary identity/clarity edit: " + edit2);
+        lines.push("");
+      }
+      var usedCodes = {};
+      if (edit1Code) usedCodes[edit1Code] = true;
+      if (edit2Code) usedCodes[edit2Code] = true;
+      var usedStrat = {};
+      for (var i = 0; i < (codes || []).length; i++) {
+        var code = codes[i];
+        if (usedCodes[code]) continue;
+        var strat = reasonCodeToStrategy(code);
+        if (strat && !usedStrat[strat]) {
+          usedStrat[strat] = true;
+          lines.push("- " + strat);
+        }
+      }
+      lines.push("");
+      lines.push("Do not:");
+      lines.push("- Do not introduce new genre elements.");
+      lines.push("- Do not over-layer the first 30 seconds.");
+      lines.push("- Do not add a contrasting genre bridge.");
+      return lines.join("\n");
+    }
+
     function safeText(s, fallback) {
       const t = (s === null || s === undefined) ? "" : String(s);
       const trimmed = t.trim();
@@ -1231,47 +1315,71 @@
         pre.textContent = deepText;
         panel.appendChild(pre);
 
-        if (item.suno_slider_values && typeof item.suno_slider_values === "object") {
-          const sv = item.suno_slider_values;
-          const block = el("div", "bc-suno-policy");
-          block.style.marginTop = "14px";
-          block.style.paddingTop = "10px";
-          block.style.borderTop = "1px solid #e5e7eb";
-          const titleEl = document.createElement("div");
-          titleEl.className = "bc-row";
-          titleEl.style.fontWeight = "bold";
-          titleEl.style.marginBottom = "6px";
-          titleEl.textContent = "Suno Cover Settings (Recommended)";
-          block.appendChild(titleEl);
-          block.appendChild(el("div", "bc-row", "Mode: cover"));
-          function fmtPct(raw) {
-            if (raw === null || raw === undefined) return "—";
-            const n = Number(raw);
-            if (!isFinite(n)) return "—";
-            const pct = Math.round(n * 100);
-            return pct + "% (" + n + ")";
+        var sv = (item.suno_slider_values && typeof item.suno_slider_values === "object") ? item.suno_slider_values : {};
+        var block = el("div", "bc-suno-policy");
+        block.style.marginTop = "14px";
+        block.style.paddingTop = "10px";
+        block.style.borderTop = "1px solid #e5e7eb";
+        var titleEl = document.createElement("div");
+        titleEl.className = "bc-row";
+        titleEl.style.fontWeight = "bold";
+        titleEl.style.marginBottom = "6px";
+        titleEl.textContent = "Suno Cover Settings (Recommended)";
+        block.appendChild(titleEl);
+        block.appendChild(el("div", "bc-row", "Mode: cover"));
+        function fmtPct(raw, defaultVal) {
+          if (raw !== null && raw !== undefined) {
+            var n = Number(raw);
+            if (isFinite(n)) {
+              var norm = n > 1.0001 ? n / 100 : n;
+              var pct = Math.round(norm * 100);
+              return pct + "% (" + norm + ")";
+            }
           }
-          block.appendChild(el("div", "bc-row", "Audio Influence: " + fmtPct(sv.audio_influence)));
-          block.appendChild(el("div", "bc-row", "Style Influence: " + fmtPct(sv.style_influence)));
-          block.appendChild(el("div", "bc-row", "Weirdness: " + fmtPct(sv.weirdness)));
-          block.appendChild(el("div", "bc-row", "Lyrics Mode: " + (sv.lyrics_mode != null ? String(sv.lyrics_mode) : "—")));
-          block.appendChild(el("div", "bc-row", "Vocal Gender: " + (sv.vocal_gender != null ? String(sv.vocal_gender) : "—")));
-          if (item.suno_prompt_suggestion && String(item.suno_prompt_suggestion).trim()) {
-            const lab = document.createElement("div");
-            lab.className = "bc-row";
-            lab.style.fontWeight = "bold";
-            lab.style.marginTop = "8px";
-            lab.textContent = "Prompt suggestion:";
-            block.appendChild(lab);
-            const txt = document.createElement("div");
-            txt.className = "bc-row";
-            txt.style.marginTop = "4px";
-            txt.style.whiteSpace = "pre-wrap";
-            txt.textContent = String(item.suno_prompt_suggestion).trim();
-            block.appendChild(txt);
-          }
-          panel.appendChild(block);
+          if (defaultVal != null) return Math.round(defaultVal * 100) + "% (" + defaultVal + ")";
+          return "—";
         }
+        var audioDef = 0.70;
+        var styleDef = 0.50;
+        var weirdDef = 0.42;
+        block.appendChild(el("div", "bc-row", "Audio Influence: " + fmtPct(sv.audio_influence, audioDef)));
+        block.appendChild(el("div", "bc-row", "Style Influence: " + fmtPct(sv.style_influence, styleDef)));
+        block.appendChild(el("div", "bc-row", "Weirdness: " + fmtPct(sv.weirdness, weirdDef)));
+        block.appendChild(el("div", "bc-row", "Lyrics Mode: " + (sv.lyrics_mode != null ? String(sv.lyrics_mode) : "—")));
+        if (item.vocal_gender_explicit && sv.vocal_gender != null && String(sv.vocal_gender).trim()) {
+          block.appendChild(el("div", "bc-row", "Vocal Gender: " + String(sv.vocal_gender).trim()));
+        }
+        var codes = normalizeReasonCodes(item);
+        var edits = getSurgicalEdits(codes);
+        var surgicalList = [];
+        if (edits.edit1) surgicalList.push(edits.edit1);
+        if (edits.edit2) surgicalList.push(edits.edit2);
+        if (surgicalList.length) {
+          var editsTitle = document.createElement("div");
+          editsTitle.className = "sp-suno-title sp-suno-edits";
+          editsTitle.textContent = "Surgical edits (max 2)";
+          block.appendChild(editsTitle);
+          var ol = document.createElement("ol");
+          ol.style.marginTop = "6px";
+          for (var si = 0; si < surgicalList.length; si++) {
+            var li = document.createElement("li");
+            li.textContent = surgicalList[si];
+            ol.appendChild(li);
+          }
+          block.appendChild(ol);
+        }
+        var promptText = buildSunoCoverPrompt(codes, edits.edit1, edits.edit2, edits.edit1Code, edits.edit2Code);
+        var promptTitle = document.createElement("div");
+        promptTitle.className = "sp-suno-title";
+        promptTitle.textContent = "Suno Cover Prompt (copy/paste)";
+        block.appendChild(promptTitle);
+        var textarea = document.createElement("textarea");
+        textarea.className = "sp-suno-prompt";
+        textarea.readOnly = true;
+        textarea.value = promptText;
+        textarea.setAttribute("rows", "8");
+        block.appendChild(textarea);
+        panel.appendChild(block);
 
         var codes = normalizeReasonCodes(item);
         var primary = codes.length ? reasonCodeToFocus(codes[0]) : null;
