@@ -383,3 +383,19 @@
   border-color: #bdbdbd !important;
   color: #666666 !important;
 }
+
+.sp-signal-summary {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+}
+.sp-ss-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.sp-ss-focus,
+.sp-ss-strategy {
+  margin-top: 6px;
+  line-height: 1.35;
+}

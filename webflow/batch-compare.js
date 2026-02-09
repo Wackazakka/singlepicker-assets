@@ -566,6 +566,90 @@
       return n;
     }
 
+    function normalizeReasonCodes(item) {
+      if (!item) return [];
+      if (Array.isArray(item.reason_codes)) return item.reason_codes.filter(Boolean);
+      if (Array.isArray(item.reasons)) {
+        return item.reasons
+          .map(function (r) { return (r && (r.code || r.reason_code || r.reasonCode)) || null; })
+          .filter(Boolean);
+      }
+      if (Array.isArray(item.suno_reason_codes)) return item.suno_reason_codes.filter(Boolean);
+      return [];
+    }
+
+    function reasonCodeToFocus(code) {
+      switch (code) {
+        case "crossover_segment":
+          return "The track blends multiple stylistic worlds, which weakens its identity and impact.";
+        case "weak_opening":
+        case "late_hook":
+        case "hook_late":
+          return "The track takes too long to establish its defining hook and early momentum.";
+        case "chorus_not_lifting":
+        case "flat_dynamics":
+        case "flat_chorus":
+          return "The chorus does not clearly surpass the verse in energy and payoff.";
+        case "low_identity":
+        case "generic_profile":
+        case "weak_early_identity":
+          return "The track feels competent but lacks a distinct sonic signature.";
+        case "arrangement_clutter":
+          return "The arrangement is overly dense, reducing clarity and hook impact.";
+        case "vocal_mismatch":
+        case "unclear_lead":
+          return "The vocal delivery and presence are not fully aligned with the track's intended style and impact.";
+        case "energy_mismatch":
+        case "energy_plateau":
+          return "The overall energy level does not match the track's intended release role.";
+        case "structure_drifts":
+        case "too_long":
+          return "The structure loses focus over time and could be tightened for replay value.";
+        case "needs_contrast":
+          return "The track would benefit from a clearer dynamic or structural contrast.";
+        case "flat_bass":
+          return "Bass and low-end movement could be stronger for more forward drive.";
+        default:
+          return null;
+      }
+    }
+
+    function reasonCodeToStrategy(code) {
+      switch (code) {
+        case "crossover_segment":
+          return "Lock the production into one clear sonic palette and reduce contrasting genre textures.";
+        case "weak_opening":
+        case "late_hook":
+        case "hook_late":
+          return "Shorten the intro and surface the defining hook earlier to increase immediacy.";
+        case "chorus_not_lifting":
+        case "flat_dynamics":
+        case "flat_chorus":
+          return "Create a clearer chorus lift through dynamics, harmony support, and arrangement contrast.";
+        case "low_identity":
+        case "generic_profile":
+        case "weak_early_identity":
+          return "Add one recurring signature motif/timbre early and keep the sonic world consistent.";
+        case "arrangement_clutter":
+          return "Reduce competing layers and keep one dominant lead element at a time.";
+        case "vocal_mismatch":
+        case "unclear_lead":
+          return "Clarify a consistent vocal persona and strengthen chorus presence with subtle support/doubles.";
+        case "energy_mismatch":
+        case "energy_plateau":
+          return "Adjust density and groove to better match the intended energy level without changing the song's core.";
+        case "structure_drifts":
+        case "too_long":
+          return "Tighten structure and remove drifting sections while reinforcing the core hook more often.";
+        case "needs_contrast":
+          return "Introduce a clear contrast moment (breakdown or half-time) then return with a bigger payoff.";
+        case "flat_bass":
+          return "Increase bass movement in the chorus or drop for stronger forward drive.";
+        default:
+          return null;
+      }
+    }
+
     function safeText(s, fallback) {
       const t = (s === null || s === undefined) ? "" : String(s);
       const trimmed = t.trim();
@@ -1186,16 +1270,27 @@
             txt.textContent = String(item.suno_prompt_suggestion).trim();
             block.appendChild(txt);
           }
-          if (item.suno_reason_codes && Array.isArray(item.suno_reason_codes) && item.suno_reason_codes.length) {
-            const rcLab = document.createElement("div");
-            rcLab.className = "bc-row";
-            rcLab.style.fontWeight = "bold";
-            rcLab.style.marginTop = "6px";
-            rcLab.textContent = "Reason codes:";
-            block.appendChild(rcLab);
-            block.appendChild(el("div", "bc-row", item.suno_reason_codes.map(function (c) { return String(c); }).join(", ")));
-          }
           panel.appendChild(block);
+        }
+
+        var codes = normalizeReasonCodes(item);
+        var primary = codes.length ? reasonCodeToFocus(codes[0]) : null;
+        var strat = codes.length ? reasonCodeToStrategy(codes[0]) : null;
+        if (primary) {
+          var sumWrap = document.createElement("div");
+          sumWrap.className = "sp-signal-summary";
+          sumWrap.appendChild(el("div", "sp-ss-title", "Signal Summary"));
+          var focusEl = document.createElement("div");
+          focusEl.className = "sp-ss-focus";
+          focusEl.innerHTML = "<strong>Primary focus:</strong> " + primary;
+          sumWrap.appendChild(focusEl);
+          if (strat) {
+            var stratEl = document.createElement("div");
+            stratEl.className = "sp-ss-strategy";
+            stratEl.innerHTML = "<strong>Strategy:</strong> " + strat;
+            sumWrap.appendChild(stratEl);
+          }
+          panel.appendChild(sumWrap);
         }
       } else {
         panel.appendChild(el("div", "bc-row", unlocked ? "No deep analysis text yet." : "Deep Analysis is locked for this track."));
