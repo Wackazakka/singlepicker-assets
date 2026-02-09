@@ -578,6 +578,20 @@
       return [];
     }
 
+    function extractEditSignalsFromDeepText(deepText) {
+      if (deepText == null || typeof deepText !== "string") return [];
+      var t = deepText.trim();
+      if (!t) return [];
+      var out = [];
+      if (/Hook timing is Late|late\s*\/\s*diffuse/i.test(t)) out.push("late_hook");
+      if (/Structural contrast.*Low|absence of dramatic shifts|languishing effect|Low–medium/i.test(t)) out.push("low_contrast");
+      if (/vocal memorability|obscure vocal|First Time listeners/i.test(t)) out.push("vocal_memorability_low");
+      if (/dynamic shift|instrumental break|modulation/i.test(t)) out.push("needs_dynamic_shift");
+      if (/bass.*supportive|does not.*momentum|stronger rhythmic pathways/i.test(t)) out.push("low_momentum_bass");
+      if (/album track|contextual release|hold\s*\(low\)/i.test(t)) out.push("contextual_release");
+      return out;
+    }
+
     function reasonCodeToFocus(code) {
       switch (code) {
         case "crossover_segment":
@@ -609,6 +623,15 @@
           return "The track would benefit from a clearer dynamic or structural contrast.";
         case "flat_bass":
           return "Bass and low-end movement could be stronger for more forward drive.";
+        case "low_contrast":
+        case "needs_dynamic_shift":
+          return "The track would benefit from one clear dynamic pivot (break, drop, or lift) to sustain attention without changing the core.";
+        case "vocal_memorability_low":
+          return "Vocal memorability on first listen could be stronger; the lead could sit slightly forward with subtle support.";
+        case "low_momentum_bass":
+          return "Low-end and rhythmic momentum could be clearer to support forward drive.";
+        case "contextual_release":
+          return "This may work better as a contextual or album release; focus on cohesion rather than lead-single spectacle.";
         default:
           return null;
       }
@@ -645,6 +668,16 @@
           return "Introduce a clear contrast moment (breakdown or half-time) then return with a bigger payoff.";
         case "flat_bass":
           return "Increase bass movement in the chorus or drop for stronger forward drive.";
+        case "low_contrast":
+          return "Introduce one clear dynamic pivot (short break/drop or lift) to keep attention while preserving the song's core.";
+        case "needs_dynamic_shift":
+          return "Introduce one clear dynamic pivot (short break/drop or lift) to keep attention while preserving the song's core.";
+        case "vocal_memorability_low":
+          return "Bring the vocal forward slightly and add subtle chorus support/doubles to improve first-listen memorability.";
+        case "low_momentum_bass":
+          return "Add gentle rhythmic propulsion in the low-end (bass movement or kick pattern) without changing the groove style.";
+        case "contextual_release":
+          return "Consider positioning this as a contextual/album release rather than a lead single; focus on cohesion over spectacle.";
         default:
           return null;
       }
@@ -653,6 +686,7 @@
     var EDIT1_GROUPS = [
       { codes: ["weak_opening", "late_hook", "hook_late"], text: "Accelerate hook delivery and shorten the intro (surface the defining hook very early)." },
       { codes: ["chorus_not_lifting", "flat_chorus", "energy_plateau"], text: "Create a clearer chorus lift (more payoff vs verse) through dynamics/harmony/arrangement contrast." },
+      { codes: ["low_contrast", "needs_dynamic_shift"], text: "Add one clear dynamic pivot moment (break/drop or lift) to increase payoff while preserving melody/harmony." },
       { codes: ["structure_drifts", "too_long"], text: "Tighten structure and remove drifting sections to improve replay focus." }
     ];
     var EDIT2_GROUPS = [
@@ -1346,7 +1380,9 @@
         if (item.vocal_gender_explicit && sv.vocal_gender != null && String(sv.vocal_gender).trim()) {
           block.appendChild(el("div", "bc-row", "Vocal Gender: " + String(sv.vocal_gender).trim()));
         }
-        var codes = normalizeReasonCodes(item);
+        var baseCodes = normalizeReasonCodes(item);
+        var deepCodes = extractEditSignalsFromDeepText(item.openai_deep_text || item.openai_deepText || "");
+        var codes = Array.from(new Set(baseCodes.concat(deepCodes)));
         var edits = getSurgicalEdits(codes);
         var surgicalList = [];
         if (edits.edit1) surgicalList.push(edits.edit1);
@@ -1378,7 +1414,6 @@
         block.appendChild(textarea);
         panel.appendChild(block);
 
-        var codes = normalizeReasonCodes(item);
         var primary = codes.length ? reasonCodeToFocus(codes[0]) : null;
         var strat = codes.length ? reasonCodeToStrategy(codes[0]) : null;
         if (primary) {
