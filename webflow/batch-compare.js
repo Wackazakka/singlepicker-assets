@@ -683,6 +683,31 @@
       }
     }
 
+    var CODE_PRIORITY = {
+      late_hook: 10,
+      weak_opening: 10,
+      hook_late: 10,
+      low_contrast: 20,
+      needs_dynamic_shift: 20,
+      chorus_not_lifting: 20,
+      flat_chorus: 20,
+      energy_plateau: 20,
+      arrangement_clutter: 30,
+      cluttered_mix: 30,
+      vocal_memorability_low: 30,
+      vocal_mismatch: 30,
+      unclear_lead: 30,
+      low_momentum_bass: 30,
+      crossover_segment: 40,
+      needs_contrast: 40,
+      low_identity: 40,
+      weak_early_identity: 40,
+      generic_profile: 40,
+      structure_drifts: 50,
+      too_long: 50,
+      contextual_release: 90
+    };
+
     var EDIT1_GROUPS = [
       { codes: ["weak_opening", "late_hook", "hook_late"], text: "Accelerate hook delivery and shorten the intro (surface the defining hook very early)." },
       { codes: ["chorus_not_lifting", "flat_chorus", "energy_plateau"], text: "Create a clearer chorus lift (more payoff vs verse) through dynamics/harmony/arrangement contrast." },
@@ -1383,6 +1408,7 @@
         var baseCodes = normalizeReasonCodes(item);
         var deepCodes = extractEditSignalsFromDeepText(item.openai_deep_text || item.openai_deepText || "");
         var codes = Array.from(new Set(baseCodes.concat(deepCodes)));
+        codes.sort(function (a, b) { return (CODE_PRIORITY[a] || 999) - (CODE_PRIORITY[b] || 999); });
         var edits = getSurgicalEdits(codes);
         var surgicalList = [];
         if (edits.edit1) surgicalList.push(edits.edit1);
