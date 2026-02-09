@@ -584,12 +584,13 @@
       if (!t) return [];
       var out = [];
       if (/Hook timing is Late|late\s*\/\s*diffuse/i.test(t)) out.push("late_hook");
-      if (/Structural contrast.*Low|absence of dramatic shifts|languishing effect|Low–medium/i.test(t)) out.push("low_contrast");
-      if (/vocal memorability|obscure vocal|First Time listeners/i.test(t)) out.push("vocal_memorability_low");
+      if (/Structural contrast.*Low|absence of dramatic shifts|languishing effect|Low–medium|Structural contrast:\s*Low|steady energy flow without dramatic shifts|limits its impact as a lead single/i.test(t)) out.push("low_contrast");
+      if (/vocal memorability|obscure vocal|First Time listeners|lack of standout vocal|does not stand out|hinder immediate identification|may pose challenges in discovery contexts|without overshadowing.*but/i.test(t)) out.push("vocal_memorability_low");
       if (/dynamic shift|instrumental break|modulation/i.test(t)) out.push("needs_dynamic_shift");
-      if (/bass.*supportive|does not.*momentum|stronger rhythmic pathways/i.test(t)) out.push("low_momentum_bass");
-      if (/album track|contextual release|hold\s*\(low\)/i.test(t)) out.push("contextual_release");
-      return out;
+      if (/bass.*supportive|does not.*momentum|stronger rhythmic pathways|rather than driving it forward|doesn'?t drive.*forward|reduces opportunities for dynamic tension and release|benefits from moments that introduce more pronounced movement|does not catalyz(e|ing) any significant momentum shifts/i.test(t)) out.push("low_momentum_bass");
+      if (/album track|contextual release|hold\s*\(low\)|Best positioned as hold|decision:\s*hold/i.test(t)) out.push("contextual_release");
+      if (/strong groove|Funk\/Soul|groove-driven|prioritizes groove/i.test(t)) out.push("groove_keep");
+      return Array.from(new Set(out));
     }
 
     function reasonCodeToFocus(code) {
@@ -632,6 +633,8 @@
           return "Low-end and rhythmic momentum could be clearer to support forward drive.";
         case "contextual_release":
           return "This may work better as a contextual or album release; focus on cohesion rather than lead-single spectacle.";
+        case "groove_keep":
+          return "This track is groove-forward; improvements should preserve its rhythmic identity.";
         default:
           return null;
       }
@@ -678,6 +681,8 @@
           return "Add gentle rhythmic propulsion in the low-end (bass movement or kick pattern) without changing the groove style.";
         case "contextual_release":
           return "Consider positioning this as a contextual/album release rather than a lead single; focus on cohesion over spectacle.";
+        case "groove_keep":
+          return "Preserve the groove-first feel; improve contrast and clarity without overcomplicating harmony.";
         default:
           return null;
       }
@@ -705,6 +710,7 @@
       generic_profile: 40,
       structure_drifts: 50,
       too_long: 50,
+      groove_keep: 55,
       contextual_release: 90
     };
 
@@ -774,6 +780,7 @@
       var usedCodes = {};
       if (edit1Code) usedCodes[edit1Code] = true;
       if (edit2Code) usedCodes[edit2Code] = true;
+      var secondaryBullets = [];
       var usedStrat = {};
       for (var i = 0; i < (codes || []).length; i++) {
         var code = codes[i];
@@ -782,10 +789,14 @@
         var strat = reasonCodeToStrategy(code);
         if (strat && !usedStrat[strat]) {
           usedStrat[strat] = true;
-          lines.push("- " + strat);
+          secondaryBullets.push("- " + strat);
         }
       }
-      lines.push("");
+      if (secondaryBullets.length > 0) {
+        lines.push("Secondary refinements:");
+        for (var j = 0; j < secondaryBullets.length; j++) lines.push(secondaryBullets[j]);
+        lines.push("");
+      }
       lines.push("Do not:");
       lines.push("- Do not introduce new genre elements.");
       lines.push("- Do not over-layer the first 30 seconds.");
