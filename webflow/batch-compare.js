@@ -18,7 +18,25 @@
     const API_BASE = "https://rf-api-7vvq.onrender.com";
     const FETCH_TIMEOUT = 12000;
     const CLOSE_GAP = 10;
-    
+    const SP_BATCH_STORAGE_KEY = "sp_active_batch_id";
+    const SP_RUN_IDEM_KEY = "sp_run_idem_key";
+
+    function getActiveBatchId() {
+      try {
+        const id = localStorage.getItem(SP_BATCH_STORAGE_KEY);
+        return id && String(id).trim() ? String(id).trim() : null;
+      } catch (_) { return null; }
+    }
+    function setActiveBatchId(id) {
+      try {
+        if (id == null || id === "") localStorage.removeItem(SP_BATCH_STORAGE_KEY);
+        else localStorage.setItem(SP_BATCH_STORAGE_KEY, String(id));
+      } catch (_) {}
+    }
+    function clearActiveBatchId() {
+      try { localStorage.removeItem(SP_BATCH_STORAGE_KEY); } catch (_) {}
+    }
+
     // Preset-specific minimum hit_score gates for preset winner candidates
     const PRESET_HIT_GATES = {
       hit_single: 0.25,      // 25% for second pick (strict)
@@ -429,6 +447,37 @@
       if (elUploader) elUploader.style.display = "none";
       if (elCompare) elCompare.style.display = "none";
       if (elError) elError.textContent = msg;
+    }
+
+    function handleApiErrorForBatch(res, bodyText) {
+      const status = res.status;
+      let msg = "";
+      let clearBatch = false;
+      let data = null;
+      try { data = bodyText ? JSON.parse(bodyText) : null; } catch (_) {}
+      if (status === 401 || (bodyText && String(bodyText).includes("JWT expired"))) {
+        msg = "Session expired. Please log in again.";
+        clearBatch = true;
+      } else if (status === 402) {
+        const code = (data && (data.error || data.code || data.detail)); 
+        if (String(code).indexOf("INSUFFICIENT_CREDITS") !== -1 || status === 402) {
+          msg = "Insufficient credits. Please top up.";
+        } else { msg = "Payment error. Please try again."; }
+      } else if (status === 403) {
+        const code = (data && (data.error || data.code || (data.detail && String(data.detail)))) || "";
+        if (String(code).indexOf("BATCH_NOT_OWNED") !== -1) {
+          msg = "Batch session invalid. Please start a new compare.";
+          clearBatch = true;
+        } else { msg = "Access denied. Please try again."; }
+      } else if (status === 422) {
+        msg = "Internal request missing fields (batch_id/title). Please refresh and try again.";
+        console.error("sp validation error", bodyText || data);
+      } else {
+        msg = "Request failed. Please try again.";
+      }
+      if (clearBatch) clearActiveBatchId();
+      showError(msg);
+      throw new Error(msg);
     }
 
     function showUploader() {
@@ -2714,8 +2763,13 @@
       console.debug("[Batch Compare] Batch fetch response", { status: res.status, ok: res.ok });
 
       if (res.status === 401) {
-        showError("You must be logged in to view this batch.");
+        clearActiveBatchId();
+        showError("Session expired. Please log in again.");
         throw new Error("UNAUTHORIZED");
+      }
+      if (res.status === 403 || res.status === 402 || res.status === 422) {
+        const text = await res.text().catch((_) => "");
+        handleApiErrorForBatch(res, text);
       }
 
       if (!res.ok) {
@@ -2752,8 +2806,13 @@
       });
       clearTimeout(timeoutId);
       if (res.status === 401) {
-        showError("You must be logged in to view this compare.");
+        clearActiveBatchId();
+        showError("Session expired. Please log in again.");
         throw new Error("UNAUTHORIZED");
+      }
+      if (res.status === 403 || res.status === 402 || res.status === 422) {
+        const text = await res.text().catch(function () { return ""; });
+        handleApiErrorForBatch(res, text);
       }
       if (!res.ok) {
         const text = await res.text().catch(function () { return ""; });
@@ -2780,7 +2839,13 @@
       return data.audio_url;
     }
 
-    async function pipelineOne(title, audioUrl, token) {
+    async function pipelineOne(title, audioUrl, token, batchId) {
+      const safeTitle = (title && String(title).trim()) ? String(title).trim() : "Untitled";
+      if (!batchId) {
+        showError("Batch session missing. Please start a new compare.");
+        throw new Error("MISSING_BATCH_ID");
+      }
+      console.info("sp calling /pipeline with batch_id=", batchId);
       const res = await fetch(API_BASE + "/pipeline", {
         method: "POST",
         headers: {
@@ -2788,7 +2853,8 @@
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          title: title,
+          batch_id: batchId,
+          title: safeTitle,
           artist: null,
           audio_url: audioUrl,
           force_rescore: false,
@@ -2796,16 +2862,24 @@
         })
       });
 
+      const text = await res.text().catch((_) => "");
       if (!res.ok) {
-        const text = await res.text().catch((_) => "");
+        if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 422) {
+          handleApiErrorForBatch(res, text);
+        }
         throw new Error("Pipeline failed: HTTP " + res.status + (text ? (": " + text) : ""));
       }
-      const data = await res.json();
+      const data = JSON.parse(text);
       if (!data || !data.song_id) throw new Error("Pipeline failed: missing song_id");
       return data.song_id;
     }
 
     async function tagBatch(batchId, songIds, token) {
+      if (!batchId) {
+        showError("Batch session missing. Please start a new compare.");
+        throw new Error("MISSING_BATCH_ID");
+      }
+      console.info("sp calling /batch/tag with batch_id=", batchId);
       const res = await fetch(API_BASE + "/batch/tag", {
         method: "POST",
         headers: {
@@ -2815,11 +2889,14 @@
         body: JSON.stringify({ batch_id: batchId, song_ids: songIds })
       });
 
+      const text = await res.text().catch((_) => "");
       if (!res.ok) {
-        const text = await res.text().catch((_) => "");
+        if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 422) {
+          handleApiErrorForBatch(res, text);
+        }
         throw new Error("Batch tag failed: HTTP " + res.status + (text ? (": " + text) : ""));
       }
-      return await res.json();
+      return text ? JSON.parse(text) : {};
     }
 
     function runWithConcurrencyLimit(tasks, limit) {
@@ -2940,9 +3017,57 @@
       setProgress("Preparing…");
       setMsg("Preparing…");
 
-      const batchId = uuidv4();
-      const songIds = [];
+      let idemKey = null;
+      try { idemKey = sessionStorage.getItem(SP_RUN_IDEM_KEY); } catch (_) {}
+      if (!idemKey || !String(idemKey).trim()) {
+        idemKey = "sp_run_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+        try { sessionStorage.setItem(SP_RUN_IDEM_KEY, idemKey); } catch (_) {}
+      }
 
+      const N = files.length;
+      console.info("sp batch-create track_count=", N);
+      let batchId = null;
+      try {
+        const createRes = await fetch(API_BASE + "/credits/batch-create", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ track_count: N, idempotency_key: idemKey })
+        });
+        const createText = await createRes.text().catch((_) => "");
+        if (!createRes.ok) {
+          if (createRes.status === 401 || createRes.status === 402 || createRes.status === 403 || createRes.status === 422) {
+            handleApiErrorForBatch(createRes, createText);
+          }
+          throw new Error("Batch create failed: HTTP " + createRes.status + (createText ? (": " + createText) : ""));
+        }
+        const createData = createText ? JSON.parse(createText) : {};
+        batchId = createData.batch_id || null;
+        if (!batchId) {
+          showError("Batch session invalid. Please start a new compare.");
+          throw new Error("BATCH_CREATE_NO_ID");
+        }
+        console.info("sp batch_id=", batchId);
+        setActiveBatchId(batchId);
+      } catch (e) {
+        if (e.message && (e.message.indexOf("Session expired") !== -1 || e.message.indexOf("Insufficient credits") !== -1 || e.message.indexOf("Batch session invalid") !== -1 || e.message.indexOf("Internal request missing") !== -1)) {
+          setMsg(e.message);
+        } else {
+          console.error("[BatchCompare] batch-create failed:", e);
+          setMsg("Could not start batch. Please try again.");
+        }
+        setProgress("");
+        try { sessionStorage.removeItem(SP_RUN_IDEM_KEY); } catch (_) {}
+        if (elStart) elStart.disabled = false;
+        if (elReset) elReset.disabled = false;
+        if (elFiles) elFiles.disabled = false;
+        renderSelectedFilesList();
+        return;
+      }
+
+      const songIds = [];
       try {
         for (let i = 0; i < files.length; i++) {
           const uploadMsg = "Uploading " + (i + 1) + "/" + files.length + "…";
@@ -2956,7 +3081,7 @@
           setMsg(analyzeMsg);
 
           const title = baseTitleFromFilename(files[i].name);
-          const songId = await pipelineOne(title, audioUrl, token);
+          const songId = await pipelineOne(title, audioUrl, token, batchId);
           songIds.push(songId);
         }
 
@@ -2966,11 +3091,17 @@
 
         await tagBatch(batchId, songIds, token);
 
+        try { sessionStorage.removeItem(SP_RUN_IDEM_KEY); } catch (_) {}
         window.location.href = "/batch-compare?batch_id=" + encodeURIComponent(batchId);
       } catch (e) {
         console.error("[BatchCompare] batch failed:", e);
-        setMsg("Something went wrong. Please try again.");
+        if (e.message && (e.message.indexOf("Session expired") !== -1 || e.message.indexOf("Insufficient credits") !== -1 || e.message.indexOf("Batch session invalid") !== -1 || e.message.indexOf("Internal request missing") !== -1)) {
+          setMsg(e.message);
+        } else {
+          setMsg("Something went wrong. Please try again.");
+        }
         setProgress("");
+        try { sessionStorage.removeItem(SP_RUN_IDEM_KEY); } catch (_) {}
         if (elStart) elStart.disabled = false;
         if (elReset) elReset.disabled = false;
         if (elFiles) elFiles.disabled = false;
