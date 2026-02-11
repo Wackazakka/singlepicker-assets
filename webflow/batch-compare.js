@@ -495,20 +495,17 @@
     let creditsError = "";
     let creditsLoading = false;
     let creditsLoadedAt = 0;
-    let creditsBtnCompare = null;
-    let creditsBtnUploader = null;
     let creditsBackdrop = null;
     let creditsPanelBalance = null;
     let creditsPanelError = null;
     let creditsPanelList = null;
+    let creditsRefreshTimer = null;
 
     function ensureCreditsStyles() {
       if (document.getElementById("sp-credits-inline-style")) return;
       const style = document.createElement("style");
       style.id = "sp-credits-inline-style";
       style.textContent = [
-        ".sp-credits-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.06);color:#fff;font-size:12px;line-height:1;cursor:pointer}",
-        ".sp-credits-btn:hover{background:rgba(255,255,255,.12)}",
         ".sp-credits-inline-wrap{display:inline-flex;align-items:center;margin-left:8px}",
         ".sp-credits-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:none;align-items:flex-start;justify-content:flex-end;padding:18px}",
         ".sp-credits-panel{width:min(420px,92vw);max-height:80vh;overflow:auto;background:#111827;color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 12px 10px;box-shadow:0 16px 36px rgba(0,0,0,.4)}",
@@ -524,6 +521,24 @@
       document.head.appendChild(style);
     }
 
+    function getSupabaseAccessToken() {
+      try {
+        const key = Object.keys(localStorage).find(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+        if (!key) return "";
+        const raw = localStorage.getItem(key);
+        if (!raw) return "";
+        return JSON.parse(raw)?.access_token || "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function setCreditsInlineText(txt) {
+      document.querySelectorAll(".sp-credits-inline-wrap").forEach(el => {
+        el.textContent = txt;
+      });
+    }
+
     function shortRefId(v) {
       const s = String(v || "").trim();
       if (!s) return "—";
@@ -534,17 +549,6 @@
       const d = new Date(v);
       if (Number.isNaN(d.getTime())) return "—";
       return d.toLocaleString();
-    }
-
-    function creditsLabelText() {
-      if (typeof creditsBalance === "number" && Number.isFinite(creditsBalance)) return "Credits: " + creditsBalance;
-      return "Credits: —";
-    }
-
-    function refreshCreditsButtons() {
-      const txt = creditsLabelText();
-      if (creditsBtnCompare) creditsBtnCompare.textContent = txt;
-      if (creditsBtnUploader) creditsBtnUploader.textContent = txt;
     }
 
     function renderCreditsPanel() {
@@ -585,89 +589,81 @@
     function openCreditsPanel() {
       if (!creditsBackdrop) return;
       creditsBackdrop.style.display = "flex";
-      loadCreditsData(false);
+      refreshCreditsUI();
     }
 
-    async function fetchCreditsJson(url, token) {
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json",
-        },
-      });
-      const text = await res.text().catch(function () { return ""; });
-      const data = safeJsonParse(text);
-      if (!res.ok) {
-        const raw = text || (data && data.detail) || "";
-        if (res.status === 401 || String(raw).indexOf("JWT expired") !== -1) {
-          const err = new Error("Session expired. Please log in again.");
-          err.code = "SESSION_EXPIRED";
-          throw err;
-        }
-        const err = new Error("Could not load credits.");
-        err.code = "LOAD_FAILED";
-        throw err;
-      }
-      return data;
-    }
-
-    async function loadCreditsData(forceReload) {
+    async function refreshCreditsUI(forceReload) {
       if (creditsLoading) return;
       if (!forceReload && creditsLoadedAt && (Date.now() - creditsLoadedAt) < 15000) {
         renderCreditsPanel();
-        refreshCreditsButtons();
         return;
       }
-      const token = getSupabaseAccessTokenFromLocalStorage();
-      if (!token) {
+
+      const tok = getSupabaseAccessToken();
+      if (!tok) {
+        setCreditsInlineText("Credits: —");
         creditsError = "Session expired. Please log in again.";
         creditsBalance = null;
         creditsItems = [];
-        refreshCreditsButtons();
         renderCreditsPanel();
         return;
       }
+
+      const headers = { Authorization: "Bearer " + tok };
       creditsLoading = true;
       creditsError = "";
+
       try {
-        const balanceDataPromise = fetchCreditsJson(API_BASE + "/credits/balance", token);
-        const ledgerDataPromise = fetchCreditsJson(API_BASE + "/credits/ledger?limit=10", token);
-        const both = await Promise.all([balanceDataPromise, ledgerDataPromise]);
-        const balanceData = both[0] || {};
-        const ledgerData = both[1] || {};
+        const [balanceRes, ledgerRes] = await Promise.all([
+          fetch(API_BASE + "/credits/balance", { method: "GET", headers }),
+          fetch(API_BASE + "/credits/ledger?limit=10", { method: "GET", headers }),
+        ]);
+
+        const balanceTxt = await balanceRes.text().catch(() => "");
+        const ledgerTxt = await ledgerRes.text().catch(() => "");
+        const balanceData = safeJsonParse(balanceTxt) || {};
+        const ledgerData = safeJsonParse(ledgerTxt) || {};
+        const rawErr = balanceTxt + " " + ledgerTxt;
+
+        if (balanceRes.status === 401 || ledgerRes.status === 401 || rawErr.includes("JWT expired")) {
+          creditsError = "Session expired. Please log in again.";
+          creditsBalance = null;
+          creditsItems = [];
+          setCreditsInlineText("Credits: —");
+          renderCreditsPanel();
+          return;
+        }
+
+        if (!balanceRes.ok || !ledgerRes.ok) {
+          creditsError = "Could not load credits.";
+          creditsBalance = null;
+          creditsItems = [];
+          setCreditsInlineText("Credits: —");
+          renderCreditsPanel();
+          return;
+        }
+
         const maybeBalance = Number(balanceData.balance);
         creditsBalance = Number.isFinite(maybeBalance) ? maybeBalance : null;
         creditsItems = Array.isArray(ledgerData.items) ? ledgerData.items : [];
+
         if (creditsBalance == null) {
           creditsError = "Could not load credits.";
+          setCreditsInlineText("Credits: —");
+        } else {
+          setCreditsInlineText("Credits: " + creditsBalance);
         }
+
         creditsLoadedAt = Date.now();
-      } catch (e) {
-        const code = e && e.code ? String(e.code) : "";
-        if (code === "SESSION_EXPIRED") creditsError = "Session expired. Please log in again.";
-        else creditsError = "Could not load credits.";
+      } catch (_) {
+        creditsError = "Could not load credits.";
         creditsBalance = null;
         creditsItems = [];
+        setCreditsInlineText("Credits: —");
       } finally {
         creditsLoading = false;
-        refreshCreditsButtons();
         renderCreditsPanel();
       }
-    }
-
-    function makeCreditsButton() {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sp-credits-btn";
-      btn.textContent = "Credits: —";
-      btn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (creditsBackdrop && creditsBackdrop.style.display === "flex") closeCreditsPanel();
-        else openCreditsPanel();
-      });
-      return btn;
     }
 
     function ensureCreditsPanel() {
@@ -718,29 +714,41 @@
     function ensureCreditsUi() {
       ensureCreditsStyles();
       ensureCreditsPanel();
-      if (!creditsBtnCompare) {
-        creditsBtnCompare = makeCreditsButton();
+
+      if (!container.querySelector(".sp-credits-inline-wrap[data-credits-ctx='compare']")) {
         const compareHost = (elNew && elNew.parentElement) || (elStrategy && elStrategy.parentElement) || elCompare;
         if (compareHost) {
           const wrap = document.createElement("span");
           wrap.className = "sp-credits-inline-wrap";
-          wrap.appendChild(creditsBtnCompare);
+          wrap.setAttribute("data-credits-ctx", "compare");
+          wrap.textContent = "Credits: —";
+          wrap.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (creditsBackdrop && creditsBackdrop.style.display === "flex") closeCreditsPanel();
+            else openCreditsPanel();
+          });
           compareHost.appendChild(wrap);
         }
       }
-      if (!creditsBtnUploader) {
-        creditsBtnUploader = makeCreditsButton();
+
+      if (!container.querySelector(".sp-credits-inline-wrap[data-credits-ctx='uploader']")) {
         const uploaderHost = (elStart && elStart.parentElement) || elUploader;
         if (uploaderHost) {
-          const wrap = document.createElement("div");
+          const wrap = document.createElement("span");
           wrap.className = "sp-credits-inline-wrap";
-          wrap.style.marginTop = "8px";
-          wrap.style.marginLeft = "0";
-          wrap.appendChild(creditsBtnUploader);
+          wrap.setAttribute("data-credits-ctx", "uploader");
+          wrap.textContent = "Credits: —";
+          wrap.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (creditsBackdrop && creditsBackdrop.style.display === "flex") closeCreditsPanel();
+            else openCreditsPanel();
+          });
           uploaderHost.appendChild(wrap);
         }
       }
-      refreshCreditsButtons();
+
       renderCreditsPanel();
     }
 
@@ -2917,13 +2925,15 @@
       }
       const token = session.access_token;
       const debugMode = qsDebug();
-      ensureCreditsUi();
-      loadCreditsData(false);
 
       const batchId = qsBatchId();
 
       if (!batchId) {
         showUploader();
+        ensureCreditsUi();
+        setCreditsInlineText("Credits: …");
+        refreshCreditsUI();
+        if (!creditsRefreshTimer) creditsRefreshTimer = setInterval(refreshCreditsUI, 60_000);
 
         resetSelection();
         setMsg("Select at least 3 files.");
@@ -2950,6 +2960,10 @@
       }
 
       showCompare();
+      ensureCreditsUi();
+      setCreditsInlineText("Credits: …");
+      refreshCreditsUI();
+      if (!creditsRefreshTimer) creditsRefreshTimer = setInterval(refreshCreditsUI, 60_000);
 
       if (elNew) {
         elNew.addEventListener("click", function () {
