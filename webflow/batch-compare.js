@@ -539,6 +539,244 @@
       return null;
     }
 
+    let creditsBalance = null;
+    let creditsItems = [];
+    let creditsError = "";
+    let creditsLoading = false;
+    let creditsRefreshTimer = null;
+    let creditsBackdrop = null;
+    let creditsPanelBalance = null;
+    let creditsPanelError = null;
+    let creditsPanelList = null;
+
+    function getSupabaseAccessToken() {
+      try {
+        const key = Object.keys(localStorage).find(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+        if (!key) return "";
+        const raw = localStorage.getItem(key);
+        if (!raw) return "";
+        return JSON.parse(raw)?.access_token || "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function ensureCreditsStyles() {
+      if (document.getElementById("sp-credits-inline-style")) return;
+      const style = document.createElement("style");
+      style.id = "sp-credits-inline-style";
+      style.textContent = [
+        ".sp-credits-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:none;align-items:flex-start;justify-content:flex-end;padding:18px}",
+        ".sp-credits-panel{width:min(420px,92vw);max-height:80vh;overflow:auto;background:#111827;color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 12px 10px;box-shadow:0 16px 36px rgba(0,0,0,.4)}",
+        ".sp-credits-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}",
+        ".sp-credits-title{font-size:14px;font-weight:700}",
+        ".sp-credits-close{border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;border-radius:8px;padding:4px 8px;cursor:pointer}",
+        ".sp-credits-balance{font-size:13px;margin-bottom:8px;opacity:.95}",
+        ".sp-credits-error{font-size:12px;color:#fecaca;margin-bottom:8px;display:none}",
+        ".sp-credits-list{display:grid;gap:6px}",
+        ".sp-credits-row{font-size:12px;line-height:1.35;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.05);word-break:break-word}",
+        ".sp-credits-empty{font-size:12px;opacity:.75;padding:4px 0}"
+      ].join("");
+      document.head.appendChild(style);
+    }
+
+    function ensureCreditsPanel() {
+      if (creditsBackdrop) return;
+      const back = document.createElement("div");
+      back.className = "sp-credits-backdrop";
+      const panel = document.createElement("div");
+      panel.className = "sp-credits-panel";
+      const head = document.createElement("div");
+      head.className = "sp-credits-head";
+      const title = document.createElement("div");
+      title.className = "sp-credits-title";
+      title.textContent = "Credits";
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "sp-credits-close";
+      closeBtn.textContent = "Close";
+      closeBtn.addEventListener("click", function () { closeCreditsPanel(); });
+      head.appendChild(title);
+      head.appendChild(closeBtn);
+
+      const balance = document.createElement("div");
+      balance.className = "sp-credits-balance";
+      balance.textContent = "Balance: —";
+      const error = document.createElement("div");
+      error.className = "sp-credits-error";
+      const list = document.createElement("div");
+      list.className = "sp-credits-list";
+
+      panel.appendChild(head);
+      panel.appendChild(balance);
+      panel.appendChild(error);
+      panel.appendChild(list);
+      back.appendChild(panel);
+      back.addEventListener("click", function (e) {
+        if (e.target === back) closeCreditsPanel();
+      });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeCreditsPanel();
+      });
+      container.appendChild(back);
+      creditsBackdrop = back;
+      creditsPanelBalance = balance;
+      creditsPanelError = error;
+      creditsPanelList = list;
+    }
+
+    function closeCreditsPanel() {
+      if (creditsBackdrop) creditsBackdrop.style.display = "none";
+    }
+
+    function openCreditsPanel() {
+      if (!creditsBackdrop) return;
+      creditsBackdrop.style.display = "flex";
+      refreshCreditsUI();
+    }
+
+    function ensureCreditsInlineWrap() {
+      ensureCreditsStyles();
+      ensureCreditsPanel();
+      let count = 0;
+      const mounts = [
+        container.querySelector("#bc-compare .bc-actions"),
+        container.querySelector(".bc-uploader-actions"),
+      ];
+      mounts.forEach(function (host) {
+        if (!host) return;
+        let wrap = host.querySelector(".sp-credits-inline-wrap");
+        if (!wrap) {
+          wrap = document.createElement("span");
+          wrap.className = "sp-credits-inline-wrap";
+          wrap.textContent = "Credits: …";
+          wrap.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (creditsBackdrop && creditsBackdrop.style.display === "flex") closeCreditsPanel();
+            else openCreditsPanel();
+          });
+          host.appendChild(wrap);
+        }
+        count += 1;
+      });
+      return count;
+    }
+
+    function setCreditsInlineText(txt) {
+      document.querySelectorAll(".sp-credits-inline-wrap").forEach(el => {
+        el.textContent = txt;
+      });
+    }
+
+    function shortRefId(v) {
+      const s = String(v || "").trim();
+      if (!s) return "—";
+      return s.length <= 8 ? s : (s.slice(0, 8) + "…");
+    }
+
+    function fmtCreditsTime(v) {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleString();
+    }
+
+    function renderCreditsPanel() {
+      if (!creditsPanelBalance || !creditsPanelError || !creditsPanelList) return;
+      creditsPanelBalance.textContent = "Balance: " + (typeof creditsBalance === "number" && Number.isFinite(creditsBalance) ? creditsBalance : "—");
+      if (creditsError) {
+        creditsPanelError.style.display = "block";
+        creditsPanelError.textContent = creditsError;
+      } else {
+        creditsPanelError.style.display = "none";
+        creditsPanelError.textContent = "";
+      }
+      creditsPanelList.innerHTML = "";
+      if (!Array.isArray(creditsItems) || creditsItems.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "sp-credits-empty";
+        empty.textContent = "No recent ledger entries.";
+        creditsPanelList.appendChild(empty);
+        return;
+      }
+      creditsItems.slice(0, 10).forEach(function (item) {
+        const row = document.createElement("div");
+        row.className = "sp-credits-row";
+        const delta = Number(item && item.delta);
+        const deltaText = Number.isFinite(delta) ? (delta > 0 ? "+" + delta : String(delta)) : "—";
+        const reason = String((item && item.reason) || "—");
+        const ref = shortRefId(item && item.reference_id);
+        const when = fmtCreditsTime(item && item.created_at);
+        row.textContent = deltaText + " " + reason + " " + ref + " " + when;
+        creditsPanelList.appendChild(row);
+      });
+    }
+
+    async function refreshCreditsUI() {
+      if (creditsLoading) return;
+      const tok = getSupabaseAccessToken();
+      if (!tok) {
+        setCreditsInlineText("Credits: —");
+        creditsError = "Session expired. Please log in again.";
+        creditsBalance = null;
+        creditsItems = [];
+        renderCreditsPanel();
+        return;
+      }
+      const headers = { Authorization: "Bearer " + tok };
+      creditsLoading = true;
+      creditsError = "";
+      try {
+        const [balanceRes, ledgerRes] = await Promise.all([
+          fetch(API_BASE + "/credits/balance", { method: "GET", headers: headers }),
+          fetch(API_BASE + "/credits/ledger?limit=10", { method: "GET", headers: headers }),
+        ]);
+        const balanceTxt = await balanceRes.text().catch(() => "");
+        const ledgerTxt = await ledgerRes.text().catch(() => "");
+        const balanceData = safeJsonParse(balanceTxt) || {};
+        const ledgerData = safeJsonParse(ledgerTxt) || {};
+        if (balanceRes.status === 401 || ledgerRes.status === 401 || balanceTxt.includes("JWT expired") || ledgerTxt.includes("JWT expired")) {
+          setCreditsInlineText("Credits: —");
+          creditsError = "Session expired. Please log in again.";
+          creditsBalance = null;
+          creditsItems = [];
+          renderCreditsPanel();
+          return;
+        }
+        if (!balanceRes.ok) {
+          setCreditsInlineText("Credits: —");
+          creditsError = "Could not load credits.";
+          creditsBalance = null;
+          creditsItems = [];
+          renderCreditsPanel();
+          return;
+        }
+        const balance = Number(balanceData.balance);
+        if (Number.isFinite(balance)) {
+          creditsBalance = balance;
+          setCreditsInlineText(`Credits: ${balance}`);
+        } else {
+          creditsBalance = null;
+          setCreditsInlineText("Credits: —");
+          creditsError = "Could not load credits.";
+        }
+        creditsItems = Array.isArray(ledgerData.items) ? ledgerData.items : [];
+      } catch (_) {
+        setCreditsInlineText("Credits: —");
+        creditsError = "Could not load credits.";
+        creditsBalance = null;
+        creditsItems = [];
+      } finally {
+        creditsLoading = false;
+        renderCreditsPanel();
+      }
+    }
+
+    function startCreditsRefreshLoop() {
+      if (creditsRefreshTimer) return;
+      creditsRefreshTimer = setInterval(refreshCreditsUI, 60_000);
+    }
+
     function findSupabaseSession() {
       const exactKeys = [
         "sb-svvfyyxryrgkemlsvzip-auth-token",
@@ -3146,6 +3384,10 @@
         if (!songIds.length) {
           console.warn("[batch] mysongs mode but no song ids found in URL", { INITIAL_HREF: INITIAL_HREF });
           showUploader();
+          ensureCreditsInlineWrap();
+          setCreditsInlineText("Credits: …");
+          refreshCreditsUI();
+          startCreditsRefreshLoop();
           setMsg("No songs selected. Add song_ids or songIds to the URL.");
           if (elFiles) {
             elFiles.addEventListener("change", function () {
@@ -3168,6 +3410,10 @@
 
       if (!batchId && !songIds.length) {
         showUploader();
+        ensureCreditsInlineWrap();
+        setCreditsInlineText("Credits: …");
+        refreshCreditsUI();
+        startCreditsRefreshLoop();
 
         resetSelection();
         setMsg("Select at least 3 files.");
@@ -3194,6 +3440,10 @@
       }
 
       showCompare();
+      ensureCreditsInlineWrap();
+      setCreditsInlineText("Credits: …");
+      refreshCreditsUI();
+      startCreditsRefreshLoop();
 
       if (elNew) {
         elNew.addEventListener("click", function () {
