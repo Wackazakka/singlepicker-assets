@@ -16,6 +16,7 @@
     console.debug("[Batch Compare] boot ok", { version: "js", debug: qsDebug() });
 
     const API_BASE = "https://rf-api-7vvq.onrender.com";
+    const BUY_CREDITS_URL = "/pricing";
     const FETCH_TIMEOUT = 12000;
     const CLOSE_GAP = 10;
     const SP_BATCH_STORAGE_KEY = "sp_active_batch_id";
@@ -573,6 +574,8 @@
         ".sp-credits-close{border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;border-radius:8px;padding:4px 8px;cursor:pointer}",
         ".sp-credits-balance{font-size:13px;margin-bottom:8px;opacity:.95}",
         ".sp-credits-error{font-size:12px;color:#fecaca;margin-bottom:8px;display:none}",
+        ".sp-credits-actions{display:flex;gap:8px;margin-bottom:8px}",
+        ".sp-credits-buy{display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.22);color:#fff;text-decoration:none;border-radius:8px;padding:5px 10px;font-size:12px}",
         ".sp-credits-list{display:grid;gap:6px}",
         ".sp-credits-row{font-size:12px;line-height:1.35;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.05);word-break:break-word}",
         ".sp-credits-empty{font-size:12px;opacity:.75;padding:4px 0}"
@@ -604,12 +607,20 @@
       balance.textContent = "Balance: —";
       const error = document.createElement("div");
       error.className = "sp-credits-error";
+      const actions = document.createElement("div");
+      actions.className = "sp-credits-actions";
+      const buyBtn = document.createElement("a");
+      buyBtn.className = "sp-credits-buy";
+      buyBtn.href = BUY_CREDITS_URL;
+      buyBtn.textContent = "Buy credits";
+      actions.appendChild(buyBtn);
       const list = document.createElement("div");
       list.className = "sp-credits-list";
 
       panel.appendChild(head);
       panel.appendChild(balance);
       panel.appendChild(error);
+      panel.appendChild(actions);
       panel.appendChild(list);
       back.appendChild(panel);
       back.addEventListener("click", function (e) {
@@ -669,6 +680,58 @@
       });
     }
 
+    function getVisibleCreditsWrap() {
+      const wraps = Array.from(document.querySelectorAll(".sp-credits-inline-wrap"));
+      return wraps.find(function (w) { return !!(w && w.getClientRects && w.getClientRects().length); }) || wraps[0] || null;
+    }
+
+    function showCreditsDelta(amount) {
+      const wrap = getVisibleCreditsWrap();
+      if (!wrap || !amount || amount <= 0) return;
+      const rect = wrap.getBoundingClientRect();
+      const bubble = document.createElement("div");
+      bubble.className = "sp-credits-delta";
+      bubble.textContent = "-" + amount;
+      bubble.style.left = (rect.right - 12) + "px";
+      bubble.style.top = (rect.top - 8) + "px";
+      document.body.appendChild(bubble);
+      setTimeout(function () {
+        try { bubble.remove(); } catch (_) {}
+      }, 1100);
+    }
+
+    function showLowCreditsToast(balance) {
+      if (window.__SP_LOW_CREDITS_TOAST_SHOWN__) return;
+      window.__SP_LOW_CREDITS_TOAST_SHOWN__ = true;
+      const toast = document.createElement("div");
+      toast.className = "sp-credits-toast";
+      toast.textContent = "Low credits (balance: " + balance + ")";
+      document.body.appendChild(toast);
+      setTimeout(function () {
+        try { toast.remove(); } catch (_) {}
+      }, 2800);
+    }
+
+    function updateStartButtonCreditsState() {
+      if (!elStart) return;
+      const selectedCount = selectedFiles.length;
+      const enoughFiles = selectedCount >= 3 && selectedCount <= 10;
+      let shouldDisable = !enoughFiles;
+      let title = "";
+      if (
+        enoughFiles &&
+        typeof creditsBalance === "number" &&
+        Number.isFinite(creditsBalance) &&
+        creditsBalance < selectedCount
+      ) {
+        shouldDisable = true;
+        title = "Need " + selectedCount + " credits (you have " + creditsBalance + ").";
+      }
+      elStart.disabled = shouldDisable;
+      if (title) elStart.title = title;
+      else elStart.removeAttribute("title");
+    }
+
     function shortRefId(v) {
       const s = String(v || "").trim();
       if (!s) return "—";
@@ -720,6 +783,7 @@
         creditsError = "Session expired. Please log in again.";
         creditsBalance = null;
         creditsItems = [];
+        updateStartButtonCreditsState();
         renderCreditsPanel();
         return;
       }
@@ -751,14 +815,18 @@
           renderCreditsPanel();
           return;
         }
-        const balance = Number(balanceData.balance);
-        if (Number.isFinite(balance)) {
-          creditsBalance = balance;
-          setCreditsInlineText(`Credits: ${balance}`);
-        } else {
+        const bal =
+          (typeof balanceData?.balance === "number" ? balanceData.balance : null) ??
+          (typeof balanceData?.credits_balance === "number" ? balanceData.credits_balance : null) ??
+          (typeof balanceData?.credits === "number" ? balanceData.credits : null);
+        if (bal == null) {
           creditsBalance = null;
           setCreditsInlineText("Credits: —");
           creditsError = "Could not load credits.";
+        } else {
+          creditsBalance = bal;
+          setCreditsInlineText(`Credits: ${bal}`);
+          if (bal < 5) showLowCreditsToast(bal);
         }
         creditsItems = Array.isArray(ledgerData.items) ? ledgerData.items : [];
       } catch (_) {
@@ -768,6 +836,7 @@
         creditsItems = [];
       } finally {
         creditsLoading = false;
+        updateStartButtonCreditsState();
         renderCreditsPanel();
       }
     }
@@ -1319,16 +1388,15 @@
       }
 
       if (selectedFiles.length >= 3 && selectedFiles.length <= 10) {
-        if (elStart) elStart.disabled = false;
         if (elMsg && (elMsg.style.display !== "block" || elMsg.textContent === "Select at least 3 files.")) {
           setMsg("");
         }
       } else {
-        if (elStart) elStart.disabled = true;
         if (selectedFiles.length > 0 && selectedFiles.length < 3) {
           setMsg("Select at least 3 files.");
         }
       }
+      updateStartButtonCreditsState();
     }
 
     function getBestMatchCategory(item) {
@@ -3262,6 +3330,13 @@
       }
 
       const N = files.length;
+      if (typeof creditsBalance === "number" && Number.isFinite(creditsBalance) && creditsBalance < N) {
+        setMsg("Need " + N + " credits (you have " + creditsBalance + ").");
+        if (elStart) elStart.title = "Need " + N + " credits (you have " + creditsBalance + ").";
+        setProgress("");
+        renderSelectedFilesList();
+        return;
+      }
       console.info("sp batch-create track_count=", N);
       let batchId = null;
       try {
@@ -3288,6 +3363,8 @@
         }
         console.info("sp batch_id=", batchId);
         setActiveBatchId(batchId);
+        showCreditsDelta(N);
+        refreshCreditsUI();
       } catch (e) {
         if (e.message && (e.message.indexOf("Session expired") !== -1 || e.message.indexOf("Insufficient credits") !== -1 || e.message.indexOf("Batch session invalid") !== -1 || e.message.indexOf("Internal request missing") !== -1)) {
           setMsg(e.message);

@@ -476,6 +476,7 @@ textarea.sp-suno-prompt {
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 /* Ensure proper spacing in header actions */
@@ -483,4 +484,52 @@ textarea.sp-suno-prompt {
 .bc-uploader-actions {
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.sp-credits-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sp-credits-buy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.sp-credits-toast {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 10001;
+  background: #111827;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.sp-credits-delta {
+  position: fixed;
+  z-index: 10002;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  animation: spCreditsDeltaUp 1s ease-out forwards;
+}
+
+@keyframes spCreditsDeltaUp {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(-18px); opacity: 0; }
 }
