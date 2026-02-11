@@ -461,3 +461,26 @@ textarea.sp-suno-prompt {
   flex-shrink: 0;
   margin-left: auto;
 }
+
+/* ===== Credits pill styling ===== */
+.sp-credits-inline-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #111827;   /* dark background */
+  color: #ffffff;        /* white text */
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Ensure proper spacing in header actions */
+#bc-compare .bc-actions,
+.bc-uploader-actions {
+  gap: 10px;
+  flex-wrap: wrap;
+}
