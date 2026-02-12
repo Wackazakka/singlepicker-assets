@@ -1276,42 +1276,24 @@
       return Math.max(floor, Math.min(cap, dispPct));
     }
 
-    // Helper to get batch-relative display value from hit_score (0-1) and score object
-    function getHitScoreForDisplay(hitScoreRaw, scoreObj = null) {
-      if (hitScoreRaw === null || hitScoreRaw === undefined) return null;
-      const rawPct = Number(hitScoreRaw) * 100;
-      if (!Number.isFinite(rawPct)) return null;
-      
-      // If score object has batch stats, use them; otherwise fallback to raw
-      const minPct = scoreObj?.batchMinPct;
-      const maxPct = scoreObj?.batchMaxPct;
-      
-      if (minPct !== null && minPct !== undefined && maxPct !== null && maxPct !== undefined) {
-        return computeBatchRelativeHitScore(rawPct, minPct, maxPct);
-      }
-      
-      // Fallback: return raw if no batch stats available
-      return rawPct;
+    function spNum(x){ return (typeof x==="number" && isFinite(x)) ? x : null; }
+
+    function getHitProb01(item){
+      const a = spNum(item?.hit_probability_display);
+      if (a !== null) return Math.max(0, Math.min(1, a));
+      const b = spNum(item?.hit_probability);
+      if (b !== null) return Math.max(0, Math.min(1, b));
+      return null;
     }
 
-    function getHitProbForDisplay(item) {
-      const hp =
-        item?.hit_probability_display ??
-        item?.hit_probability ??
-        item?.features_json?.hit_probability ??
-        item?.features_json?.threshold?.hit_probability ??
-        null;
-
-      return (typeof hp === "number" && isFinite(hp)) ? hp : null;
+    function getHitPct(item){
+      const p = getHitProb01(item);
+      return p === null ? null : (p * 100);
     }
 
-    function formatHitScorePercent(item) {
-      const hp = getHitProbForDisplay(item);
-      return hp === null ? null : (hp * 100);
-    }
-
-    function computeHitScore(item) {
-      return getHitProbForDisplay(item);
+    function fmtPct(pct){
+      if (pct === null) return "—";
+      return (Math.round(pct * 10) / 10).toFixed(1) + "%";
     }
 
     function normalizeTagProb(tag) {
@@ -1956,15 +1938,14 @@
       }
     }
 
-    function renderFallbackCard(item, songId, hitScore, scoreObj = null) {
+    function renderFallbackCard(item, songId) {
       const card = el("div", "bc-card");
       const title = safeText(item?.title, "Untitled");
       card.appendChild(el("div", "bc-song-title", title));
-      // hitScore is 0-1 from tuned.hit_score, convert to batch-relative display value
-      const dispPct = getHitScoreForDisplay(hitScore, scoreObj);
-      const hitText = dispPct === null ? "—" : dispPct.toFixed(1) + "%";
-      const colorClass = getHitScoreColorClass(dispPct);
-      const hitTextColored = dispPct !== null
+      const hitPct = getHitPct(item);
+      const hitText = fmtPct(hitPct);
+      const colorClass = getHitScoreColorClass(hitPct);
+      const hitTextColored = hitPct !== null
         ? `<span class="${colorClass}" style="font-variant-numeric:tabular-nums;">${hitText}</span>`
         : hitText;
       const rowEl = el("div", "bc-row");
@@ -2237,14 +2218,16 @@
       const scores = [];
       for (const item of currentItems) {
         const songId = item?.id;
+        const hitProb01 = getHitProb01(item);
+        const hitPct = getHitPct(item);
         if (!songId) {
-          const fallbackHitScore = getHitProbForDisplay(item);
           const fallback = computeCompareScore(item);
           scores.push({
             item,
-            hit_score: fallbackHitScore,
+            hit_prob_01: hitProb01,
+            hit_pct: hitPct,
             preset_score: fallback.total,
-            delta: (fallbackHitScore !== null) ? (fallback.total - fallbackHitScore) : 0,
+            delta: (hitProb01 !== null) ? (fallback.total - hitProb01) : 0,
             tuned_score_raw: null,
             isFallback: true
           });
@@ -2253,28 +2236,24 @@
 
         const tuned = await fetchTuningScore(songId, currentPreset);
         if (tuned === null) {
-          // Fallback: use hit_probability_display if available, else null
-          const fallbackHitScore = getHitProbForDisplay(item);
           const fallback = computeCompareScore(item);
           scores.push({
             item,
-            hit_score: fallbackHitScore,
+            hit_prob_01: hitProb01,
+            hit_pct: hitPct,
             preset_score: fallback.total,
-            delta: (fallbackHitScore !== null) ? (fallback.total - fallbackHitScore) : 0,
+            delta: (hitProb01 !== null) ? (fallback.total - hitProb01) : 0,
             tuned_score_raw: null,
             isFallback: true
           });
         } else {
-          // Use tuned.hit_score (0-1) as the source of truth for hit_score
-          const hitScore = (tuned.hit_score !== null && tuned.hit_score !== undefined)
-            ? Number(tuned.hit_score)
-            : null;
           const presetScore = tuned.tuned_score; // from /tuning/score; ranking sorts by this (tuned_score)
-          const delta = (hitScore !== null) ? (presetScore - hitScore) : 0;
+          const delta = (hitProb01 !== null) ? (presetScore - hitProb01) : 0;
 
           scores.push({
             item,
-            hit_score: hitScore,
+            hit_prob_01: hitProb01,
+            hit_pct: hitPct,
             preset_score: presetScore,
             delta: delta,
             tuned_score_raw: tuned.tuned_score_raw,
@@ -2282,54 +2261,6 @@
             isFallback: false
           });
         }
-      }
-
-      // Compute batch-relative min/max for hit score display
-      const validHitScores = scores
-        .filter(s => s.hit_score !== null && s.hit_score !== undefined && !s.isFallback)
-        .map(s => Number(s.hit_score) * 100)
-        .filter(pct => Number.isFinite(pct));
-      
-      const minPct = validHitScores.length > 0 ? Math.min(...validHitScores) : null;
-      const maxPct = validHitScores.length > 0 ? Math.max(...validHitScores) : null;
-      
-      // Store batch stats on each score object for display
-      scores.forEach(s => {
-        s.batchMinPct = minPct;
-        s.batchMaxPct = maxPct;
-      });
-      
-      // Debug log: first item (or top 3)
-      if (validHitScores.length > 0 && qsDebug()) {
-        const top3 = scores.slice(0, 3).filter(s => s.hit_score !== null);
-        top3.forEach((s, idx) => {
-          const rawPct = Number(s.hit_score) * 100;
-          // Compute intermediate values for debug
-          if (rawPct >= 20 && minPct !== null && maxPct !== null && maxPct !== minPct) {
-            const t = (rawPct - minPct) / (maxPct - minPct);
-            const shrink = 0.85;
-            const tShrunk = Math.max(0, Math.min(1, t * shrink));
-            const dispPct = computeBatchRelativeHitScore(rawPct, minPct, maxPct);
-            console.log(`[Batch Compare] hit_score batch-relative [${idx}]:`, {
-              rawPct: rawPct.toFixed(1),
-              t: t.toFixed(3),
-              t_shrunk: tShrunk.toFixed(3),
-              dispPct: dispPct !== null ? dispPct.toFixed(1) : null,
-              minPct: minPct !== null ? minPct.toFixed(1) : null,
-              maxPct: maxPct !== null ? maxPct.toFixed(1) : null
-            });
-          } else {
-            const dispPct = computeBatchRelativeHitScore(rawPct, minPct, maxPct);
-            console.log(`[Batch Compare] hit_score batch-relative [${idx}]:`, {
-              rawPct: rawPct.toFixed(1),
-              t: "N/A",
-              t_shrunk: "N/A",
-              dispPct: dispPct !== null ? dispPct.toFixed(1) : null,
-              minPct: minPct !== null ? minPct.toFixed(1) : null,
-              maxPct: maxPct !== null ? maxPct.toFixed(1) : null
-            });
-          }
-        });
       }
 
       const isBalladPreset = (currentPreset === "ballad");
@@ -2352,14 +2283,22 @@
           return;
         }
 
-        // Top pick = høyest hit_score blant balladScores (null => -1)
-        const sortedByHit = balladScores.slice().sort((a,b) => ((b.hit_score ?? -1) - (a.hit_score ?? -1)));
+        // Top pick = highest hit probability percent among balladScores
+        const sortedByHit = balladScores.slice().sort((x, y) => {
+          const a = getHitPct(x?.item) ?? -1;
+          const b = getHitPct(y?.item) ?? -1;
+          return b - a;
+        });
         let lead = sortedByHit[0];
         let leadId = lead?.item?.id ? String(lead.item.id) : null;
 
         // Preset winner = høyest preset_score blant ballader uten lead
         const rest = balladScores.filter(s => String(s?.item?.id || "") !== String(leadId || ""));
-        let presetWinner = rest.length ? rest.slice().sort((a,b)=> b.preset_score - a.preset_score)[0] : null;
+        let presetWinner = rest.length ? rest.slice().sort((x, y) => {
+          const a = getHitPct(x?.item) ?? -1;
+          const b = getHitPct(y?.item) ?? -1;
+          return b - a;
+        })[0] : null;
         let presetWinnerId = presetWinner?.item?.id ? String(presetWinner.item.id) : null;
 
         // Header-UI (ingen album track i ballad preset)
@@ -2380,7 +2319,11 @@
 
         const added = new Set(ranked.map(r => String(r?.item?.id || "")));
         const remaining = balladScores.filter(s => !added.has(String(s?.item?.id || "")));
-        remaining.sort((a,b)=> b.preset_score - a.preset_score);
+        remaining.sort((x, y) => {
+          const a = getHitPct(x?.item) ?? -1;
+          const b = getHitPct(y?.item) ?? -1;
+          return b - a;
+        });
         ranked.push(...remaining);
 
         const totalCount = scores.length;
@@ -2411,8 +2354,9 @@
               const analysisStatus = item?.analysis_status;
               const hasFailedAnalysis = analysisStatus && String(analysisStatus).toLowerCase().includes("fail");
               const missingData = !item?.features_json && !item?.analysis_json;
-              const hasNullHitScore = r?.hit_score === null || r?.hit_score === undefined;
-              const hasVeryLowHitScore = r?.hit_score !== null && r?.hit_score !== undefined && r.hit_score < 0.05;
+              const hitProb01 = getHitProb01(item);
+              const hasNullHitScore = hitProb01 === null || hitProb01 === undefined;
+              const hasVeryLowHitScore = hitProb01 !== null && hitProb01 < 0.05;
               const isWeakOrInvalid = hasFailedAnalysis || missingData || hasNullHitScore || hasVeryLowHitScore;
               
               if (sid === leadId) {
@@ -2472,14 +2416,12 @@
 
               const scoreRow = el("div", "bc-score-row");
               const presetScore = r?.preset_score !== null && r?.preset_score !== undefined ? r.preset_score : 0;
-              // r.hit_score is 0-1 from tuned.hit_score, convert to batch-relative display value
-              const hitScoreRaw = r?.hit_score !== null && r?.hit_score !== undefined ? r.hit_score : null;
-              const dispPct = getHitScoreForDisplay(hitScoreRaw, r);
+              const hitPct = getHitPct(item);
               const delta = r?.delta !== null && r?.delta !== undefined ? r.delta : 0;
 
-              const hitScoreText = dispPct === null ? "—" : dispPct.toFixed(1) + "%";
-              const colorClass = getHitScoreColorClass(dispPct);
-              const hitScoreTextColored = dispPct !== null
+              const hitScoreText = fmtPct(hitPct);
+              const colorClass = getHitScoreColorClass(hitPct);
+              const hitScoreTextColored = hitPct !== null
                 ? `<span class="${colorClass}" style="font-variant-numeric:tabular-nums;">${hitScoreText}</span>`
                 : hitScoreText;
               const presetScoreText = formatPercent01(presetScore);
@@ -2568,7 +2510,7 @@
               elList.appendChild(card);
             } catch (e) {
               console.error("[Batch Compare] card render failed", item?.id, e);
-              if (elList) elList.appendChild(renderFallbackCard(item, songId, r?.hit_score ?? null, r));
+              if (elList) elList.appendChild(renderFallbackCard(item, songId));
             }
           });
         }
@@ -2586,7 +2528,7 @@
           return {
             id: r?.item?.id ? String(r.item.id) : "",
             title: safeText(r?.item?.title, "Untitled"),
-            hit_score: r?.hit_score !== null && r?.hit_score !== undefined ? Number(r.hit_score) : null,
+            hit_probability_display: getHitProb01(r?.item),
             preset_score: Number(r?.preset_score || 0),
             delta: Number(r?.delta || 0),
             preset_used: r?.preset_used || currentPreset || "ballad",
@@ -2596,8 +2538,8 @@
         try { window.__batchCompareLastGoodScores = lastGoodScores; } catch (_) {}
 
         // Debug logging
-        const leadObj = lead ? { id: leadId, title: safeText(lead.item.title, "Untitled"), preset_score: lead.preset_score, hit_score: lead.hit_score, delta: lead.delta } : null;
-        const presetObj = presetWinner ? { id: presetWinnerId, title: safeText(presetWinner.item.title, "Untitled"), preset_score: presetWinner.preset_score, hit_score: presetWinner.hit_score, delta: presetWinner.delta } : null;
+        const leadObj = lead ? { id: leadId, title: safeText(lead.item.title, "Untitled"), preset_score: lead.preset_score, hit_score: getHitProb01(lead.item), delta: lead.delta } : null;
+        const presetObj = presetWinner ? { id: presetWinnerId, title: safeText(presetWinner.item.title, "Untitled"), preset_score: presetWinner.preset_score, hit_score: getHitProb01(presetWinner.item), delta: presetWinner.delta } : null;
         console.debug("[Batch Compare] scores (ballad)", { preset: currentPreset, lead: leadObj, presetWinner: presetObj });
 
         // Render debug table if enabled
@@ -2618,9 +2560,7 @@
             const tr = document.createElement("tr");
             const name = (r.isFallback ? (r.title + " (fallback)") : r.title);
             const cyaniteDescText = r.cyanite_desc ? String(r.cyanite_desc).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "—";
-            // r.hit_score is 0-1 from tuned.hit_score, convert to batch-relative display value
-            const debugDispPct = getHitScoreForDisplay(r.hit_score, r);
-            const debugHitScoreText = debugDispPct === null ? "—" : debugDispPct.toFixed(1) + "%";
+            const debugHitScoreText = fmtPct(getHitPct(r));
             tr.innerHTML =
               "<td style=\"padding:8px;border-bottom:1px solid #f3f4f6;font-size:12px;color:#111827;\">" + name.replace(/</g, "&lt;") + "</td>" +
               "<td style=\"padding:8px;border-bottom:1px solid #f3f4f6;font-size:12px;color:#111827;\">" + String(r.preset_used || "").replace(/</g, "&lt;") + "</td>" +
@@ -2647,10 +2587,10 @@
       let presetWinnerId = null;
       
       // Non-ballad presets: normal logic
-      const sortedByHitScore = scores.slice().sort((a, b) => {
-        const hitA = a.hit_score !== null ? a.hit_score : -1;
-        const hitB = b.hit_score !== null ? b.hit_score : -1;
-        return hitB - hitA;
+      const sortedByHitScore = scores.slice().sort((x, y) => {
+        const a = getHitPct(x?.item) ?? -1;
+        const b = getHitPct(y?.item) ?? -1;
+        return b - a;
       });
       lead = sortedByHitScore[0];
       leadId = lead?.item?.id ? String(lead.item.id) : null;
@@ -2666,14 +2606,18 @@
 
       // Apply gate based on preset for non-ballad presets
       let presetCandidates = withoutLead.filter((s) => {
-        const hitScore = (s.hit_score !== null && s.hit_score !== undefined) ? Number(s.hit_score) : 0;
-        return hitScore >= minHitGate;
+        const hitProb01 = getHitProb01(s?.item);
+        return (hitProb01 ?? 0) >= minHitGate;
       });
 
       // Special handling for hit_single: no fallback if gate fails
       if (currentPreset === "hit_single") {
         if (presetCandidates.length > 0) {
-          const sortedByPresetScore = presetCandidates.slice().sort((a, b) => b.preset_score - a.preset_score);
+          const sortedByPresetScore = presetCandidates.slice().sort((x, y) => {
+            const a = getHitPct(x?.item) ?? -1;
+            const b = getHitPct(y?.item) ?? -1;
+            return b - a;
+          });
           presetWinner = sortedByPresetScore[0];
           presetWinnerId = presetWinner?.item?.id ? String(presetWinner.item.id) : null;
         } else {
@@ -2684,7 +2628,11 @@
         // For other presets: fallback to all candidates if gate leaves us empty
         if (presetCandidates.length === 0) presetCandidates = withoutLead;
 
-        const sortedByPresetScore = presetCandidates.slice().sort((a, b) => b.preset_score - a.preset_score);
+        const sortedByPresetScore = presetCandidates.slice().sort((x, y) => {
+          const a = getHitPct(x?.item) ?? -1;
+          const b = getHitPct(y?.item) ?? -1;
+          return b - a;
+        });
         presetWinner = sortedByPresetScore.length > 0 ? sortedByPresetScore[0] : null;
         presetWinnerId = presetWinner?.item?.id ? String(presetWinner.item.id) : null;
       }
@@ -2706,12 +2654,10 @@
           const sid = s?.item?.id ? String(s.item.id) : "";
           return sid !== leadId && sid !== presetWinnerId;
         });
-        const sortedByCombined = withoutLeadAndPreset.slice().sort((a, b) => {
-          const hitA = a.hit_score !== null ? a.hit_score : 0;
-          const hitB = b.hit_score !== null ? b.hit_score : 0;
-          const combinedA = hitA + 0.5 * a.delta;
-          const combinedB = hitB + 0.5 * b.delta;
-          return combinedB - combinedA;
+        const sortedByCombined = withoutLeadAndPreset.slice().sort((x, y) => {
+          const a = getHitPct(x?.item) ?? -1;
+          const b = getHitPct(y?.item) ?? -1;
+          return b - a;
         });
         album = sortedByCombined.length > 0 ? sortedByCombined[0] : null;
         albumId = album?.item?.id ? String(album.item.id) : null;
@@ -2729,7 +2675,11 @@
         const sid = s?.item?.id ? String(s.item.id) : "";
         return !addedIds.has(sid);
       });
-      remaining.sort((a, b) => b.preset_score - a.preset_score);
+      remaining.sort((x, y) => {
+        const a = getHitPct(x?.item) ?? -1;
+        const b = getHitPct(y?.item) ?? -1;
+        return b - a;
+      });
       ranked.push(...remaining);
 
       const totalCount = scores.length;
@@ -2799,8 +2749,9 @@
           const analysisStatus = item?.analysis_status;
           const hasFailedAnalysis = analysisStatus && String(analysisStatus).toLowerCase().includes("fail");
           const missingData = !item?.features_json && !item?.analysis_json;
-          const hasNullHitScore = r?.hit_score === null || r?.hit_score === undefined;
-          const hasVeryLowHitScore = r?.hit_score !== null && r?.hit_score !== undefined && r.hit_score < 0.05;
+          const hitProb01 = getHitProb01(item);
+          const hasNullHitScore = hitProb01 === null || hitProb01 === undefined;
+          const hasVeryLowHitScore = hitProb01 !== null && hitProb01 < 0.05;
           const isWeakOrInvalid = hasFailedAnalysis || missingData || hasNullHitScore || hasVeryLowHitScore;
           
           if (sid === leadId) {
@@ -2860,14 +2811,12 @@
 
           const scoreRow = el("div", "bc-score-row");
           const presetScore = r?.preset_score !== null && r?.preset_score !== undefined ? r.preset_score : 0;
-          // r.hit_score is 0-1 from tuned.hit_score, convert to batch-relative display value
-          const hitScoreRaw = r?.hit_score !== null && r?.hit_score !== undefined ? r.hit_score : null;
-          const dispPct = getHitScoreForDisplay(hitScoreRaw, r);
+          const hitPct = getHitPct(item);
           const delta = r?.delta !== null && r?.delta !== undefined ? r.delta : 0;
 
-          const hitScoreText = dispPct === null ? "—" : dispPct.toFixed(1) + "%";
-          const colorClass = getHitScoreColorClass(dispPct);
-          const hitScoreTextColored = dispPct !== null
+          const hitScoreText = fmtPct(hitPct);
+          const colorClass = getHitScoreColorClass(hitPct);
+          const hitScoreTextColored = hitPct !== null
             ? `<span class="${colorClass}" style="font-variant-numeric:tabular-nums;">${hitScoreText}</span>`
             : hitScoreText;
           const presetScoreText = formatPercent01(presetScore);
@@ -2956,15 +2905,15 @@
           elList.appendChild(card);
         } catch (e) {
           console.error("[Batch Compare] card render failed", item?.id, e);
-          if (elList) elList.appendChild(renderFallbackCard(item, songId, r?.hit_score ?? null));
+          if (elList) elList.appendChild(renderFallbackCard(item, songId));
         }
       });
 
       player.onended = function () { resetPlaybackUI(); };
 
-      const leadObj = lead ? { id: leadId, title: safeText(lead.item.title, "Untitled"), preset_score: lead.preset_score, hit_score: lead.hit_score, delta: lead.delta } : null;
-      const presetObj = presetWinner ? { id: presetWinnerId, title: safeText(presetWinner.item.title, "Untitled"), preset_score: presetWinner.preset_score, hit_score: presetWinner.hit_score, delta: presetWinner.delta } : null;
-      const albumObj = album ? { id: albumId, title: safeText(album.item.title, "Untitled"), preset_score: album.preset_score, hit_score: album.hit_score, delta: album.delta } : null;
+      const leadObj = lead ? { id: leadId, title: safeText(lead.item.title, "Untitled"), preset_score: lead.preset_score, hit_score: getHitProb01(lead.item), delta: lead.delta } : null;
+      const presetObj = presetWinner ? { id: presetWinnerId, title: safeText(presetWinner.item.title, "Untitled"), preset_score: presetWinner.preset_score, hit_score: getHitProb01(presetWinner.item), delta: presetWinner.delta } : null;
+      const albumObj = album ? { id: albumId, title: safeText(album.item.title, "Untitled"), preset_score: album.preset_score, hit_score: getHitProb01(album.item), delta: album.delta } : null;
       console.debug("[Batch Compare] scores", { preset: currentPreset, lead: leadObj, presetWinner: presetObj, album: albumObj });
 
       lastGoodScores = ranked.map((r) => {
@@ -2977,15 +2926,13 @@
         return {
           id: r?.item?.id ? String(r.item.id) : "",
           title: safeText(r?.item?.title, "Untitled"),
-          hit_score: r?.hit_score !== null && r?.hit_score !== undefined ? Number(r.hit_score) : null,
+            hit_probability_display: getHitProb01(r?.item),
           preset_score: Number(r?.preset_score || 0),
           delta: Number(r?.delta || 0),
           tuned_score_raw: (r?.tuned_score_raw === null || r?.tuned_score_raw === undefined) ? null : Number(r.tuned_score_raw),
           preset_used: r?.preset_used ? String(r.preset_used) : String(currentPreset || "hit_single"),
           isFallback: r?.isFallback === true,
-          cyanite_desc: cyaniteDesc || null,
-          batchMinPct: r?.batchMinPct,
-          batchMaxPct: r?.batchMaxPct
+            cyanite_desc: cyaniteDesc || null
         };
       });
       try { window.__batchCompareLastGoodScores = lastGoodScores; } catch (_) {}
@@ -3007,9 +2954,7 @@
           const tr = document.createElement("tr");
           const name = (r.isFallback ? (r.title + " (fallback)") : r.title);
           const cyaniteDescText = r.cyanite_desc ? String(r.cyanite_desc).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "—";
-          // r.hit_score is 0-1, convert to batch-relative display value
-          const debugDispPct = getHitScoreForDisplay(r.hit_score, r);
-          const debugHitScoreText = debugDispPct === null ? "—" : debugDispPct.toFixed(1) + "%";
+          const debugHitScoreText = fmtPct(getHitPct(r));
           tr.innerHTML =
             "<td style=\"padding:8px;border-bottom:1px solid #f3f4f6;font-size:12px;color:#111827;\">" + name.replace(/</g, "&lt;") + "</td>" +
             "<td style=\"padding:8px;border-bottom:1px solid #f3f4f6;font-size:12px;color:#111827;\">" + String(r.preset_used || "").replace(/</g, "&lt;") + "</td>" +
