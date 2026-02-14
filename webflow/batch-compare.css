@@ -533,3 +533,28 @@ textarea.sp-suno-prompt {
   10% { opacity: 1; }
   100% { transform: translateY(-18px); opacity: 0; }
 }
+
+.sp-panel {
+  margin-top: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+}
+
+.sp-panel > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #374151;
+  font-weight: 600;
+}
+
+.sp-panel-pre {
+  margin: 0;
+  padding: 8px 10px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #374151;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

@@ -17,6 +17,7 @@
 
     const API_BASE = "https://rf-api-7vvq.onrender.com";
     const BUY_CREDITS_URL = "/pricing";
+    const SHOW_PANEL = new URLSearchParams(location.search).get("lab") === "1";
     const FETCH_TIMEOUT = 12000;
     const CLOSE_GAP = 10;
     const SP_BATCH_STORAGE_KEY = "sp_active_batch_id";
@@ -1433,6 +1434,94 @@
       return null;
     }
 
+    function getFinalFromItem(item) {
+      if (!item || typeof item !== "object") return null;
+      if (item.final && typeof item.final === "object") return item.final;
+      const fj = item.features_json;
+      if (fj && typeof fj === "object" && fj.final && typeof fj.final === "object") return fj.final;
+      return null;
+    }
+
+    function panelText(v) {
+      if (v === null || v === undefined || v === "") return "—";
+      return String(v);
+    }
+
+    function panelNum(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(3) : "—";
+    }
+
+    function appendFinalPanel(card, item) {
+      if (!SHOW_PANEL || !card) return;
+      const finalObj = getFinalFromItem(item);
+      const details = document.createElement("details");
+      details.className = "sp-panel";
+      const summary = document.createElement("summary");
+      const pre = document.createElement("pre");
+      pre.className = "sp-panel-pre";
+
+      if (!finalObj || typeof finalObj !== "object") {
+        summary.textContent = "Panel (final missing)";
+        pre.textContent = "final missing";
+        details.appendChild(summary);
+        details.appendChild(pre);
+        card.appendChild(details);
+        return;
+      }
+
+      const panel = finalObj.panel && typeof finalObj.panel === "object" ? finalObj.panel : {};
+      const cyanite = panel.cyanite && typeof panel.cyanite === "object" ? panel.cyanite : {};
+      const cyaniteHook = cyanite.hook && typeof cyanite.hook === "object" ? cyanite.hook : {};
+      const cyaniteSegment = cyanite.segment && typeof cyanite.segment === "object" ? cyanite.segment : {};
+      const beats = panel.beats && typeof panel.beats === "object" ? panel.beats : {};
+      const beatsDeltas = beats.deltas && typeof beats.deltas === "object" ? beats.deltas : {};
+      const beatsWhatIf = beats.what_if && typeof beats.what_if === "object" ? beats.what_if : {};
+      const openai = panel.openai && typeof panel.openai === "object" ? panel.openai : {};
+      const judge = openai.judge && typeof openai.judge === "object" ? openai.judge : {};
+      const conflicts = Array.isArray(panel.conflicts) ? panel.conflicts : [];
+
+      summary.textContent = `Panel (final: ${panelText(finalObj.decision_band)}, ${panelText(finalObj.confidence)})`;
+      const conflictText = conflicts.length
+        ? conflicts.map(c => {
+            const code = c && c.code ? String(c.code) : "UNKNOWN";
+            const sev = c && c.severity ? String(c.severity) : "unknown";
+            return code + ":" + sev;
+          }).join(" | ")
+        : "none";
+
+      pre.textContent = [
+        `version: ${panelText(finalObj.version)}`,
+        `decision_band: ${panelText(finalObj.decision_band)}`,
+        `confidence: ${panelText(finalObj.confidence)}`,
+        `explain: ${panelText(finalObj.explain)}`,
+        "",
+        `cyanite.hit_probability: ${panelNum(cyanite.hit_probability)}`,
+        `cyanite.decision_band: ${panelText(cyanite.decision_band)}`,
+        `cyanite.hook.bucket: ${panelText(cyaniteHook.bucket)}`,
+        `cyanite.hook.confidence: ${panelNum(cyaniteHook.confidence)}`,
+        `cyanite.segment.best: ${panelText(cyaniteSegment.best)}`,
+        `cyanite.segment.confidence: ${panelText(cyaniteSegment.confidence)}`,
+        "",
+        `beats.available: ${panelText(beats.available)}`,
+        `beats.deltas.single: ${panelNum(beatsDeltas.single)}`,
+        `beats.deltas.release: ${panelNum(beatsDeltas.release)}`,
+        `beats.what_if.single: ${panelNum(beatsWhatIf.single)}`,
+        `beats.what_if.release: ${panelNum(beatsWhatIf.release)}`,
+        "",
+        `openai.available: ${panelText(openai.available)}`,
+        `openai.judge.score: ${panelNum(judge.score)}`,
+        `openai.judge.summary: ${panelText(judge.summary)}`,
+        `openai.used_for_score: ${panelText(openai.used_for_score)}`,
+        "",
+        `conflicts: ${conflictText}`,
+      ].join("\n");
+
+      details.appendChild(summary);
+      details.appendChild(pre);
+      card.appendChild(details);
+    }
+
     function isOpenAIUnlocked(item, rankIndex) {
       if (!item || typeof item !== "object") return rankIndex === 0;
       if (item.openai_unlocked === true || item.deep_unlocked === true) return true;
@@ -1951,6 +2040,7 @@
       const rowEl = el("div", "bc-row");
       rowEl.innerHTML = "Hit score: " + hitTextColored;
       card.appendChild(rowEl);
+      appendFinalPanel(card, item);
       return card;
     }
 
@@ -2506,6 +2596,7 @@
 
               appendSpotifyPitch(card, item);
               appendDeepAnalysis(card, item, idx);
+              appendFinalPanel(card, item);
 
               elList.appendChild(card);
             } catch (e) {
@@ -2901,6 +2992,7 @@
 
           appendSpotifyPitch(card, item);
           appendDeepAnalysis(card, item, idx);
+          appendFinalPanel(card, item);
 
           elList.appendChild(card);
         } catch (e) {
