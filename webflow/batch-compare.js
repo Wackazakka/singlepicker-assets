@@ -1452,10 +1452,17 @@
       return Number.isFinite(n) ? n.toFixed(3) : "—";
     }
 
-    function panelBeatsNum(beatsObj, pathA, pathB) {
-      const a = beatsObj && beatsObj[pathA] && beatsObj[pathA][pathB];
-      const n = Number(a);
-      return Number.isFinite(n) ? n.toFixed(3) : "—";
+    function renderBeatsPanelLines(beatsObj) {
+      const beats = beatsObj && typeof beatsObj === "object" ? beatsObj : {};
+      const deltas = beats.deltas && typeof beats.deltas === "object" ? beats.deltas : {};
+      const deltasRaw = beats.deltas_raw && typeof beats.deltas_raw === "object" ? beats.deltas_raw : {};
+      return [
+        `beats.deltas.single: ${panelNum(deltas.single)}`,
+        `beats.deltas_raw.single: ${panelNum(deltasRaw.single)}`,
+        `beats.scale: ${panelNum(beats.scale)}`,
+        `beats.conf_used: ${panelNum(beats.conf_used)}`,
+        `beats.cap_applied_single: ${panelText(beats.cap_applied_single)}`,
+      ];
     }
 
     function appendFinalPanel(card, item) {
@@ -1481,7 +1488,7 @@
       const cyaniteHook = cyanite.hook && typeof cyanite.hook === "object" ? cyanite.hook : {};
       const cyaniteSegment = cyanite.segment && typeof cyanite.segment === "object" ? cyanite.segment : {};
       const beats = panel.beats && typeof panel.beats === "object" ? panel.beats : {};
-      const beatsRaw = beats.deltas_raw && typeof beats.deltas_raw === "object" ? beats.deltas_raw : {};
+      if (SHOW_PANEL) console.log("BEATS_PANEL_V2", beats);
       const openai = panel.openai && typeof panel.openai === "object" ? panel.openai : {};
       const judge = openai.judge && typeof openai.judge === "object" ? openai.judge : {};
       const conflicts = Array.isArray(panel.conflicts) ? panel.conflicts : [];
@@ -1495,14 +1502,7 @@
           }).join(" | ")
         : "none";
 
-      const beatsExtraLines = beats.available ? [
-        `beats.deltas_raw.single: ${panelNum(beatsRaw.single)}`,
-        `beats.deltas_raw.release: ${panelNum(beatsRaw.release)}`,
-        `beats.conf_used: ${panelNum(beats.conf_used)}`,
-        `beats.scale: ${panelNum(beats.scale)}`,
-        `beats.cap_applied_single: ${panelText(beats.cap_applied_single)}`,
-        `beats.cap_applied_release: ${panelText(beats.cap_applied_release)}`,
-      ] : [];
+      const beatsPanelLines = beats.available ? renderBeatsPanelLines(beats) : [];
 
       pre.textContent = [
         `version: ${panelText(finalObj.version)}`,
@@ -1518,11 +1518,7 @@
         `cyanite.segment.confidence: ${panelText(cyaniteSegment.confidence)}`,
         "",
         `beats.available: ${panelText(beats.available)}`,
-        `beats.deltas.single: ${panelBeatsNum(beats, "deltas", "single")}`,
-        `beats.deltas.release: ${panelBeatsNum(beats, "deltas", "release")}`,
-        `beats.what_if.single: ${panelBeatsNum(beats, "what_if", "single")}`,
-        `beats.what_if.release: ${panelBeatsNum(beats, "what_if", "release")}`,
-        ...beatsExtraLines,
+        ...beatsPanelLines,
         "",
         `openai.available: ${panelText(openai.available)}`,
         `openai.judge.score: ${panelNum(judge.score)}`,
