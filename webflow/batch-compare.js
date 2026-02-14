@@ -1452,6 +1452,12 @@
       return Number.isFinite(n) ? n.toFixed(3) : "—";
     }
 
+    function panelBeatsNum(beatsObj, pathA, pathB) {
+      const a = beatsObj && beatsObj[pathA] && beatsObj[pathA][pathB];
+      const n = Number(a);
+      return Number.isFinite(n) ? n.toFixed(3) : "—";
+    }
+
     function appendFinalPanel(card, item) {
       if (!SHOW_PANEL || !card) return;
       const finalObj = getFinalFromItem(item);
@@ -1475,8 +1481,6 @@
       const cyaniteHook = cyanite.hook && typeof cyanite.hook === "object" ? cyanite.hook : {};
       const cyaniteSegment = cyanite.segment && typeof cyanite.segment === "object" ? cyanite.segment : {};
       const beats = panel.beats && typeof panel.beats === "object" ? panel.beats : {};
-      const beatsDeltas = beats.deltas && typeof beats.deltas === "object" ? beats.deltas : {};
-      const beatsWhatIf = beats.what_if && typeof beats.what_if === "object" ? beats.what_if : {};
       const openai = panel.openai && typeof panel.openai === "object" ? panel.openai : {};
       const judge = openai.judge && typeof openai.judge === "object" ? openai.judge : {};
       const conflicts = Array.isArray(panel.conflicts) ? panel.conflicts : [];
@@ -1504,10 +1508,10 @@
         `cyanite.segment.confidence: ${panelText(cyaniteSegment.confidence)}`,
         "",
         `beats.available: ${panelText(beats.available)}`,
-        `beats.deltas.single: ${panelNum(beatsDeltas.single)}`,
-        `beats.deltas.release: ${panelNum(beatsDeltas.release)}`,
-        `beats.what_if.single: ${panelNum(beatsWhatIf.single)}`,
-        `beats.what_if.release: ${panelNum(beatsWhatIf.release)}`,
+        `beats.deltas.single: ${panelBeatsNum(beats, "deltas", "single")}`,
+        `beats.deltas.release: ${panelBeatsNum(beats, "deltas", "release")}`,
+        `beats.what_if.single: ${panelBeatsNum(beats, "what_if", "single")}`,
+        `beats.what_if.release: ${panelBeatsNum(beats, "what_if", "release")}`,
         "",
         `openai.available: ${panelText(openai.available)}`,
         `openai.judge.score: ${panelNum(judge.score)}`,
