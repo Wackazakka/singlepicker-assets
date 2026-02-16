@@ -1456,12 +1456,23 @@
       const beats = beatsObj && typeof beatsObj === "object" ? beatsObj : {};
       const deltas = beats.deltas && typeof beats.deltas === "object" ? beats.deltas : {};
       const deltasRaw = beats.deltas_raw && typeof beats.deltas_raw === "object" ? beats.deltas_raw : {};
+      const components = beats.components && typeof beats.components === "object" ? beats.components : {};
       return [
         `beats.deltas.single: ${panelNum(deltas.single)}`,
+        `beats.deltas.release: ${panelNum(deltas.release)}`,
         `beats.deltas_raw.single: ${panelNum(deltasRaw.single)}`,
+        `beats.deltas_raw.release: ${panelNum(deltasRaw.release)}`,
         `beats.scale: ${panelNum(beats.scale)}`,
         `beats.conf_used: ${panelNum(beats.conf_used)}`,
         `beats.cap_applied_single: ${panelText(beats.cap_applied_single)}`,
+        `beats.cap_applied_release: ${panelText(beats.cap_applied_release)}`,
+        `beats.components.intro_pen: ${panelNum(components.intro_pen)}`,
+        `beats.components.clarity_boost: ${panelNum(components.clarity_boost)}`,
+        `beats.components.struct_boost: ${panelNum(components.struct_boost)}`,
+        `beats.components.rep_term: ${panelNum(components.rep_term)}`,
+        `beats.components.raw_sum_single: ${panelNum(components.raw_sum_single)}`,
+        `beats.components.raw_sum_release: ${panelNum(components.raw_sum_release)}`,
+        `beats.components.preset_used: ${panelText(components.preset_used)}`,
       ];
     }
 
