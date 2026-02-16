@@ -550,6 +550,8 @@
     let creditsPanelBalance = null;
     let creditsPanelError = null;
     let creditsPanelList = null;
+    let creditsCheckoutLoading = false;
+    let stripePaidReturn = false;
 
     function getSupabaseAccessToken() {
       try {
@@ -610,11 +612,17 @@
       error.className = "sp-credits-error";
       const actions = document.createElement("div");
       actions.className = "sp-credits-actions";
-      const buyBtn = document.createElement("a");
-      buyBtn.className = "sp-credits-buy";
-      buyBtn.href = BUY_CREDITS_URL;
-      buyBtn.textContent = "Buy credits";
-      actions.appendChild(buyBtn);
+      ["credits_10", "credits_25", "credits_50"].forEach(function (packId) {
+        const buyBtn = document.createElement("button");
+        buyBtn.type = "button";
+        buyBtn.className = "sp-credits-buy";
+        const amount = packId === "credits_10" ? "10" : (packId === "credits_25" ? "25" : "50");
+        buyBtn.textContent = "Buy " + amount;
+        buyBtn.addEventListener("click", function () {
+          startCreditsCheckout(packId);
+        });
+        actions.appendChild(buyBtn);
+      });
       const list = document.createElement("div");
       list.className = "sp-credits-list";
 
@@ -776,6 +784,63 @@
       });
     }
 
+    function getCheckoutBatchId() {
+      try {
+        const fromUrl = qsBatchId();
+        if (fromUrl) return fromUrl;
+      } catch (_) {}
+      return getActiveBatchId();
+    }
+
+    async function startCreditsCheckout(packId) {
+      if (creditsCheckoutLoading) return;
+      const tok = getSupabaseAccessToken();
+      if (!tok) {
+        creditsError = "Session expired. Please log in again.";
+        renderCreditsPanel();
+        setMsg("Session expired. Please log in again.");
+        return;
+      }
+      creditsCheckoutLoading = true;
+      try {
+        const payload = { pack_id: packId, origin: "batch_compare" };
+        const batchId = getCheckoutBatchId();
+        if (batchId) payload.batch_id = batchId;
+        const res = await fetch(API_BASE + "/stripe/checkout", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + tok,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const bodyText = await res.text().catch(() => "");
+        const data = safeJsonParse(bodyText) || {};
+        if (!res.ok) {
+          let msg = "Could not start checkout.";
+          if (res.status === 401 || bodyText.indexOf("JWT expired") !== -1) msg = "Session expired. Please log in again.";
+          creditsError = msg;
+          renderCreditsPanel();
+          setMsg(msg);
+          return;
+        }
+        const checkoutUrl = (data && data.checkout_url) ? String(data.checkout_url) : "";
+        if (!checkoutUrl) {
+          creditsError = "Could not start checkout.";
+          renderCreditsPanel();
+          setMsg("Could not start checkout.");
+          return;
+        }
+        window.location.href = checkoutUrl;
+      } catch (_) {
+        creditsError = "Could not start checkout.";
+        renderCreditsPanel();
+        setMsg("Could not start checkout.");
+      } finally {
+        creditsCheckoutLoading = false;
+      }
+    }
+
     async function refreshCreditsUI() {
       if (creditsLoading) return;
       const tok = getSupabaseAccessToken();
@@ -828,6 +893,11 @@
           creditsBalance = bal;
           setCreditsInlineText(`Credits: ${bal}`);
           if (bal < 5) showLowCreditsToast(bal);
+          if (stripePaidReturn) {
+            setMsg("Payment received - refreshing balance...");
+            stripePaidReturn = false;
+            setTimeout(function () { setMsg(""); }, 2500);
+          }
         }
         creditsItems = Array.isArray(ledgerData.items) ? ledgerData.items : [];
       } catch (_) {
@@ -3510,6 +3580,7 @@
       }
       const token = session.access_token;
       const debugMode = qsDebug();
+      stripePaidReturn = qs.get("paid") === "1";
 
       const batchId = (qs.get("batch_id") || "").trim() || null;
       const mode = (qs.get("mode") || "").trim();
