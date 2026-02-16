@@ -1472,6 +1472,9 @@
         `beats.components.rep_term: ${panelNum(components.rep_term)}`,
         `beats.components.raw_sum_single: ${panelNum(components.raw_sum_single)}`,
         `beats.components.raw_sum_release: ${panelNum(components.raw_sum_release)}`,
+        `beats.components.structure_conf_value: ${panelNum(components.structure_conf_value)}`,
+        `beats.components.structure_conf_confidence: ${panelNum(components.structure_conf_confidence)}`,
+        `beats.components.struct_placeholder: ${panelText(components.struct_placeholder)}`,
         `beats.components.preset_used: ${panelText(components.preset_used)}`,
       ];
     }
